@@ -37,6 +37,12 @@ async function collectAndSend(sourceType: "dom" | "mutation" | "performance"): P
 async function collectCandidates(sourceType: "dom" | "mutation" | "performance"): Promise<VideoCandidate[]> {
   const results = new Map<string, VideoCandidate>();
 
+  if (isFypttDetailPage()) {
+    for (const candidate of await collectFypttIframeCandidates(sourceType)) {
+      results.set(candidate.src, candidate);
+    }
+  }
+
   const addVideoElement = async (video: HTMLVideoElement) => {
     const sources = new Set<string>();
     if (video.currentSrc) {
@@ -262,6 +268,86 @@ async function resolvePoster(video: HTMLVideoElement): Promise<string> {
   }
 }
 
+async function collectFypttIframeCandidates(
+  sourceType: "dom" | "mutation" | "performance"
+): Promise<VideoCandidate[]> {
+  const iframeUrls = new Set<string>();
+  const selectors = [
+    "iframe[src*='fypttstr.php']",
+    "iframe[data-src-no-ap*='fypttstr.php']"
+  ];
+
+  for (const selector of selectors) {
+    for (const node of document.querySelectorAll(selector)) {
+      const value = node.getAttribute("src") || node.getAttribute("data-src-no-ap") || "";
+      if (!value) {
+        continue;
+      }
+
+      try {
+        iframeUrls.add(new URL(value, location.href).href);
+      } catch {
+        iframeUrls.add(value);
+      }
+    }
+  }
+
+  if (iframeUrls.size === 0) {
+    return [];
+  }
+
+  const poster =
+    document.querySelector<HTMLMetaElement>("meta[property='og:image']")?.content ||
+    document.querySelector<HTMLMetaElement>("meta[name='twitter:image']")?.content ||
+    "";
+
+  const pageLink = location.href;
+  const candidates: VideoCandidate[] = [];
+
+  for (const iframeUrl of iframeUrls) {
+    const videoUrl = await resolveFypttVideoUrl(iframeUrl);
+    if (!videoUrl) {
+      continue;
+    }
+
+    candidates.push(
+      makeCandidate({
+        src: videoUrl,
+        title: document.title,
+        poster,
+        pageLink,
+        sourceType
+      })
+    );
+  }
+
+  return candidates;
+}
+
+async function resolveFypttVideoUrl(iframeUrl: string): Promise<string> {
+  try {
+    const response = await fetch(iframeUrl, { credentials: "include" });
+    if (!response.ok) {
+      return "";
+    }
+
+    const html = await response.text();
+    const directMatch = html.match(/<source[^>]+src=["']([^"']+\.mp4[^"']*)["']/i);
+    if (directMatch?.[1]) {
+      return new URL(decodeHtmlEntities(directMatch[1]), iframeUrl).href;
+    }
+
+    const dataMatch = html.match(/https?:\/\/[^"'`\s<>]+\.mp4(?:\?[^"'`\s<>]*)?/i);
+    if (dataMatch?.[0]) {
+      return dataMatch[0];
+    }
+
+    return "";
+  } catch {
+    return "";
+  }
+}
+
 function collectMetaCandidates(sourceType: "dom" | "performance"): VideoCandidate[] {
   const values = new Set<string>();
   const selectors = [
@@ -338,6 +424,12 @@ function normalizeScriptUrl(value: string): string {
   return value.replaceAll("\\/", "/");
 }
 
+function decodeHtmlEntities(value: string): string {
+  const textarea = document.createElement("textarea");
+  textarea.innerHTML = value;
+  return textarea.value;
+}
+
 function resolveNearestPageLink(node: Element | null): string {
   const anchor =
     node?.closest("a[href]") ||
@@ -370,6 +462,10 @@ function extractLinkFromScript(text: string): string {
 
 function isRedgifsExplorePage(): boolean {
   return location.hostname === "www.redgifs.com" && location.pathname.startsWith("/explore/");
+}
+
+function isFypttDetailPage(): boolean {
+  return location.hostname === "fyptt.to" && /\/\d+\//.test(location.pathname);
 }
 
 function sendPageContext(): void {
