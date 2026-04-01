@@ -6,5 +6,5 @@ build
 coverage
 local-server/output
 local-server/tmp
+local-server/fixtures
 extension/dist
-
