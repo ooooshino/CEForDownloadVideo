@@ -18,7 +18,8 @@ exportRouter.use(async (_req, _res, next) => {
 
 exportRouter.post("/", upload.single("cover"), async (req, res) => {
   const coverPath = req.file?.path;
-  const duration = Number(req.body.duration);
+  const startTime = Number(req.body.startTime);
+  const endTime = Number(req.body.endTime);
   const pageUrl = String(req.body.pageUrl || "");
   const videos = parseVideos(req.body.videos);
 
@@ -26,8 +27,8 @@ exportRouter.post("/", upload.single("cover"), async (req, res) => {
     res.status(400).json({ ok: false, error: "缺少 cover 文件" });
     return;
   }
-  if (!Number.isInteger(duration) || duration <= 0) {
-    res.status(400).json({ ok: false, error: "duration 必须是正整数" });
+  if (!Number.isFinite(startTime) || startTime < 0 || !Number.isFinite(endTime) || endTime <= startTime) {
+    res.status(400).json({ ok: false, error: "startTime 和 endTime 不合法" });
     return;
   }
   if (!pageUrl) {
@@ -39,7 +40,7 @@ exportRouter.post("/", upload.single("cover"), async (req, res) => {
     return;
   }
 
-  logInfo("Received export request", { pageUrl, duration, count: videos.length });
+  logInfo("Received export request", { pageUrl, startTime, endTime, count: videos.length });
 
   const results: ExportResultItem[] = [];
   for (const [index, src] of videos.entries()) {
@@ -51,7 +52,8 @@ exportRouter.post("/", upload.single("cover"), async (req, res) => {
       const outputPath = await processVideo({
         src,
         pageUrl,
-        duration,
+        startTime,
+        endTime,
         coverPath,
         downloadPath,
         jobDir,

@@ -144,10 +144,13 @@ curl http://127.0.0.1:37891/health
 5. 如果页面是后加载内容，点“刷新检测”。
 6. 勾选要导出的 mp4。
 7. 上传一张图片。
-8. 输入目标秒数。
+8. 输入开始秒数和结束秒数，比如 `0` 到 `8`。
+   - 如果结束秒数超过视频总时长，会自动裁到视频结尾。
+   - 如果结束秒数小于等于开始秒数，会提示你修改。
+   - 如果开始秒数已经超过视频总时长，也会提示你修改。
 9. 点击“导出”。
 10. 处理完成后，结果会显示在 side panel，下方会列出成功或失败。
-11. 输出文件统一写到 `local-server/output/`。
+11. 输出文件统一写到本机 `~/Downloads/cutVideo/`。
 
 ## 这套方案为什么这样分工
 
@@ -193,7 +196,8 @@ curl http://127.0.0.1:37891/health
 使用 `multipart/form-data`：
 
 - `cover`: 图片文件
-- `duration`: 目标秒数
+- `startTime`: 开始秒数
+- `endTime`: 结束秒数
 - `pageUrl`: 页面 URL
 - `videos`: JSON 字符串数组
 
@@ -202,7 +206,8 @@ curl http://127.0.0.1:37891/health
 ```bash
 curl -X POST http://127.0.0.1:37891/export \
   -F "cover=@/path/to/cover.jpg" \
-  -F "duration=10" \
+  -F "startTime=0" \
+  -F "endTime=8" \
   -F "pageUrl=https://www.redgifs.com/watch/demo" \
   -F 'videos=["https://example.com/video.mp4"]'
 ```
@@ -211,12 +216,11 @@ curl -X POST http://127.0.0.1:37891/export \
 
 当前实现走“稳定优先”：
 
-1. 先把上传图片做成一个约 1 秒的片头。
-2. 再把原视频统一处理成兼容性更高的 mp4。
-3. 最后把两段接起来。
-4. 如果总长度超过目标秒数，就截断。
-5. 如果总长度不够，就冻结最后一帧补足，并补静音音频。
-6. 输出统一为 H.264 + AAC 的 mp4。
+1. 先把上传图片做成一个很短的开头画面，不再停 1 秒。
+2. 再从原视频里按开始秒数到结束秒数裁出你要的片段。
+3. 原视频不管横竖，最终都统一成竖版；横版会从中间裁成竖版。
+4. 最后把开头画面和裁出来的视频接起来。
+5. 输出统一为 H.264 + AAC 的 mp4。
 
 代码里实际调用的 ffmpeg 思路就是这三步：
 
@@ -270,4 +274,3 @@ npm run build
 cd local-server
 npm run dev
 ```
-

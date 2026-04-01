@@ -6,8 +6,8 @@ import type { VideoCandidate } from "./types";
 
 let sentUrls = new Set<string>();
 
-function collectAndSend(sourceType: "dom" | "mutation" | "performance"): void {
-  const candidates = collectCandidates(sourceType).filter((item) => {
+async function collectAndSend(sourceType: "dom" | "mutation" | "performance"): Promise<void> {
+  const candidates = (await collectCandidates(sourceType)).filter((item) => {
     if (!item.src || sentUrls.has(item.src)) {
       return false;
     }
@@ -29,10 +29,10 @@ function collectAndSend(sourceType: "dom" | "mutation" | "performance"): void {
   });
 }
 
-function collectCandidates(sourceType: "dom" | "mutation" | "performance"): VideoCandidate[] {
+async function collectCandidates(sourceType: "dom" | "mutation" | "performance"): Promise<VideoCandidate[]> {
   const results = new Map<string, VideoCandidate>();
 
-  const addVideoElement = (video: HTMLVideoElement) => {
+  const addVideoElement = async (video: HTMLVideoElement) => {
     const sources = new Set<string>();
     if (video.currentSrc) {
       sources.add(video.currentSrc);
@@ -46,13 +46,15 @@ function collectCandidates(sourceType: "dom" | "mutation" | "performance"): Vide
       }
     }
 
+    const fallbackPoster = await resolvePoster(video);
+
     for (const src of sources) {
       results.set(
         src,
         makeCandidate({
           src,
           title: document.title,
-          poster: video.poster || "",
+          poster: video.poster || fallbackPoster,
           duration: Number.isFinite(video.duration) ? video.duration : null,
           width: video.videoWidth || null,
           height: video.videoHeight || null,
@@ -62,9 +64,9 @@ function collectCandidates(sourceType: "dom" | "mutation" | "performance"): Vide
     }
   };
 
-  for (const video of document.querySelectorAll("video")) {
-    addVideoElement(video as HTMLVideoElement);
-  }
+  await Promise.all(
+    [...document.querySelectorAll("video")].map((video) => addVideoElement(video as HTMLVideoElement))
+  );
 
   for (const source of document.querySelectorAll("source[src]")) {
     const src = (source as HTMLSourceElement).src;
@@ -128,7 +130,7 @@ function startObservers(): void {
     }
 
     if (found) {
-      collectAndSend("mutation");
+      void collectAndSend("mutation");
     }
   });
 
@@ -141,13 +143,80 @@ function startObservers(): void {
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "REFRESH_VIDEO_DISCOVERY") {
     sentUrls = new Set();
-    collectAndSend("dom");
-    collectAndSend("performance");
+    void collectAndSend("dom");
+    void collectAndSend("performance");
     sendResponse({ ok: true });
   }
 });
 
-collectAndSend("dom");
-setTimeout(() => collectAndSend("performance"), 1200);
+void collectAndSend("dom");
+setTimeout(() => void collectAndSend("performance"), 1200);
 startObservers();
 
+async function resolvePoster(video: HTMLVideoElement): Promise<string> {
+  if (video.poster) {
+    return video.poster;
+  }
+
+  const nearbyImage = findNearbyImage(video);
+  if (nearbyImage) {
+    return nearbyImage;
+  }
+
+  try {
+    return await captureVideoFrame(video);
+  } catch {
+    return "";
+  }
+}
+
+function findNearbyImage(video: HTMLVideoElement): string {
+  const scope = video.closest("article, li, a, section, div") ?? video.parentElement;
+  const image = scope?.querySelector("img[src]") as HTMLImageElement | null;
+  return image?.src || "";
+}
+
+async function captureVideoFrame(video: HTMLVideoElement): Promise<string> {
+  const readyVideo = await ensureVideoReady(video);
+  if (!readyVideo.videoWidth || !readyVideo.videoHeight) {
+    return "";
+  }
+
+  const canvas = document.createElement("canvas");
+  canvas.width = readyVideo.videoWidth;
+  canvas.height = readyVideo.videoHeight;
+  const context = canvas.getContext("2d");
+  if (!context) {
+    return "";
+  }
+
+  context.drawImage(readyVideo, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/jpeg", 0.78);
+}
+
+async function ensureVideoReady(video: HTMLVideoElement): Promise<HTMLVideoElement> {
+  if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && video.videoWidth > 0) {
+    return video;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const onLoaded = () => {
+      cleanup();
+      resolve();
+    };
+    const onError = () => {
+      cleanup();
+      reject(new Error("video preview unavailable"));
+    };
+    const cleanup = () => {
+      video.removeEventListener("loadeddata", onLoaded);
+      video.removeEventListener("error", onError);
+    };
+
+    video.addEventListener("loadeddata", onLoaded, { once: true });
+    video.addEventListener("error", onError, { once: true });
+    video.load();
+  });
+
+  return video;
+}

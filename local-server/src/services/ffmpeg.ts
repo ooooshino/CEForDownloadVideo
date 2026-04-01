@@ -6,7 +6,8 @@ import { logInfo } from "../utils/logger.js";
 export interface ProcessVideoInput {
   src: string;
   pageUrl: string;
-  duration: number;
+  startTime: number;
+  endTime: number;
   coverPath: string;
   downloadPath: string;
   jobDir: string;
@@ -16,6 +17,13 @@ export interface ProcessVideoInput {
 interface ProbeInfo {
   duration: number;
   hasAudio: boolean;
+  width: number;
+  height: number;
+}
+
+interface OutputSize {
+  width: number;
+  height: number;
 }
 
 export async function checkFfmpegInstalled(): Promise<{ ffmpeg: boolean; ffprobe: boolean }> {
@@ -34,9 +42,19 @@ export async function processVideo(input: ProcessVideoInput): Promise<string> {
   }
 
   const probe = await probeVideo(input.downloadPath);
-  const introDuration = Math.min(1, input.duration);
-  const mainDurationBudget = Math.max(input.duration - introDuration, 0);
-  const padSeconds = Math.max(mainDurationBudget - probe.duration, 0);
+  const outputSize = resolveOutputSize(probe.width, probe.height);
+  if (input.startTime >= probe.duration) {
+    throw new Error(`开始秒数不能大于或等于视频总时长(${probe.duration.toFixed(2)}s)`);
+  }
+
+  const effectiveEndTime = Math.min(input.endTime, probe.duration);
+  if (effectiveEndTime <= input.startTime) {
+    throw new Error("结束秒数必须大于开始秒数");
+  }
+
+  const clipDuration = effectiveEndTime - input.startTime;
+  const introDuration = 0.2;
+  const finalDuration = clipDuration + introDuration;
 
   const introPath = createTempFilePath(input.jobDir, "intro.mp4");
   const normalizedPath = createTempFilePath(input.jobDir, "normalized.mp4");
@@ -44,8 +62,15 @@ export async function processVideo(input: ProcessVideoInput): Promise<string> {
   const outputFilename = buildOutputFileName(input.pageUrl, input.index);
   const outputPath = getOutputPath(outputFilename);
 
-  await createIntroClip(input.coverPath, introPath, introDuration);
-  await normalizeSource(input.downloadPath, normalizedPath, probe.hasAudio);
+  await createIntroClip(input.coverPath, introPath, introDuration, outputSize);
+  await normalizeSource(
+    input.downloadPath,
+    normalizedPath,
+    probe.hasAudio,
+    outputSize,
+    input.startTime,
+    clipDuration
+  );
   await writeFile(
     concatListPath,
     `file '${escapeForConcat(introPath)}'\nfile '${escapeForConcat(normalizedPath)}'\n`,
@@ -61,11 +86,7 @@ export async function processVideo(input: ProcessVideoInput): Promise<string> {
     "-i",
     concatListPath,
     "-t",
-    String(input.duration),
-    "-vf",
-    `tpad=stop_mode=clone:stop_duration=${padSeconds.toFixed(3)}`,
-    "-af",
-    "apad",
+    String(finalDuration),
     "-c:v",
     "libx264",
     "-c:a",
@@ -82,11 +103,18 @@ export async function processVideo(input: ProcessVideoInput): Promise<string> {
   return outputPath;
 }
 
-async function createIntroClip(coverPath: string, outputPath: string, duration: number): Promise<void> {
+async function createIntroClip(
+  coverPath: string,
+  outputPath: string,
+  duration: number,
+  outputSize: OutputSize
+): Promise<void> {
   const args = [
     "-y",
     "-loop",
     "1",
+    "-framerate",
+    "30",
     "-i",
     coverPath,
     "-f",
@@ -96,7 +124,7 @@ async function createIntroClip(coverPath: string, outputPath: string, duration: 
     "-t",
     String(duration),
     "-vf",
-    "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,format=yuv420p",
+    `${buildScalePadFilter(outputSize)},fps=30`,
     "-shortest",
     "-c:v",
     "libx264",
@@ -109,11 +137,22 @@ async function createIntroClip(coverPath: string, outputPath: string, duration: 
   await runCommand("ffmpeg", args);
 }
 
-async function normalizeSource(inputPath: string, outputPath: string, hasAudio: boolean): Promise<void> {
+async function normalizeSource(
+  inputPath: string,
+  outputPath: string,
+  hasAudio: boolean,
+  outputSize: OutputSize,
+  startTime: number,
+  clipDuration: number
+): Promise<void> {
   const args = [
     "-y",
+    "-ss",
+    String(startTime),
     "-i",
-    inputPath
+    inputPath,
+    "-t",
+    String(clipDuration)
   ];
 
   if (!hasAudio) {
@@ -126,7 +165,7 @@ async function normalizeSource(inputPath: string, outputPath: string, hasAudio: 
     "-map",
     hasAudio ? "0:a:0" : "1:a:0",
     "-vf",
-    "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,format=yuv420p",
+    buildScalePadFilter(outputSize),
     "-c:v",
     "libx264",
     "-c:a",
@@ -154,6 +193,30 @@ async function probeVideo(inputPath: string): Promise<ProbeInfo> {
   const streamsRaw = await runCommand("ffprobe", [
     "-v",
     "error",
+    "-select_streams",
+    "v:0",
+    "-show_entries",
+    "stream=codec_type,width,height",
+    "-of",
+    "csv=p=0",
+    inputPath
+  ]);
+
+  const duration = Number.parseFloat(durationRaw.trim());
+  const videoRow = streamsRaw
+    .split("\n")
+    .map((line) => line.trim())
+    .find(Boolean);
+
+  const [codecType, widthRaw, heightRaw] = (videoRow ?? "").split(",");
+  const width = Number.parseInt(widthRaw, 10);
+  const height = Number.parseInt(heightRaw, 10);
+
+  const audioRaw = await runCommand("ffprobe", [
+    "-v",
+    "error",
+    "-select_streams",
+    "a",
     "-show_entries",
     "stream=codec_type",
     "-of",
@@ -161,17 +224,16 @@ async function probeVideo(inputPath: string): Promise<ProbeInfo> {
     inputPath
   ]);
 
-  const duration = Number.parseFloat(durationRaw.trim());
-  const hasAudio = streamsRaw
+  const hasAudio = audioRaw
     .split("\n")
     .map((line) => line.trim())
     .includes("audio");
 
-  if (!Number.isFinite(duration) || duration <= 0) {
+  if (!Number.isFinite(duration) || duration <= 0 || codecType !== "video" || !width || !height) {
     throw new Error("无法识别源视频时长");
   }
 
-  return { duration, hasAudio };
+  return { duration, hasAudio, width, height };
 }
 
 async function commandAvailable(command: string): Promise<boolean> {
@@ -213,4 +275,40 @@ async function runCommand(command: string, args: string[]): Promise<string> {
 
 function escapeForConcat(filePath: string): string {
   return filePath.replaceAll("'", "'\\''");
+}
+
+function resolveOutputSize(width: number, height: number): OutputSize {
+  if (height >= width) {
+    const portraitHeight = toEven(height);
+    const portraitWidth = toEven((portraitHeight * 9) / 16);
+    return {
+      width: portraitWidth,
+      height: portraitHeight
+    };
+  }
+
+  return {
+    width: 720,
+    height: 1280
+  };
+}
+
+function buildScalePadFilter(outputSize: OutputSize): string {
+  return buildFilterByOrientation(outputSize);
+}
+
+function toEven(value: number): number {
+  const safe = Math.max(2, Math.round(value));
+  return safe % 2 === 0 ? safe : safe - 1;
+}
+
+function buildFilterByOrientation(outputSize: OutputSize): string {
+  const targetRatio = outputSize.width / outputSize.height;
+
+  return [
+    `scale='if(gte(iw/ih,${targetRatio}),-2,${outputSize.width})':'if(gte(iw/ih,${targetRatio}),${outputSize.height},-2)'`,
+    `crop=${outputSize.width}:${outputSize.height}`,
+    "setsar=1",
+    "format=yuv420p"
+  ].join(",");
 }

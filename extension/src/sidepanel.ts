@@ -6,7 +6,8 @@ const healthBadge = must<HTMLSpanElement>("#health-badge");
 const healthText = must<HTMLParagraphElement>("#health-text");
 const videoList = must<HTMLDivElement>("#video-list");
 const coverInput = must<HTMLInputElement>("#cover-input");
-const durationInput = must<HTMLInputElement>("#duration-input");
+const startTimeInput = must<HTMLInputElement>("#start-time-input");
+const endTimeInput = must<HTMLInputElement>("#end-time-input");
 const exportButton = must<HTMLButtonElement>("#export-btn");
 const refreshButton = must<HTMLButtonElement>("#refresh-btn");
 const selectAllButton = must<HTMLButtonElement>("#select-all-btn");
@@ -17,6 +18,9 @@ const resultList = must<HTMLDivElement>("#result-list");
 let currentTabId: number | null = null;
 let currentState: TabVideoState | null = null;
 let selectedIds = new Set<string>();
+let refreshTimer: number | null = null;
+let isRefreshing = false;
+let activeVideoId: string | null = null;
 
 // side panel 只负责展示和交互，真正的 tab 数据通过 service worker 中转，
 // 这样页面采集、后台缓存、用户操作三者边界清晰，也符合 MV3 的推荐方式。
@@ -31,6 +35,7 @@ async function bootstrap(): Promise<void> {
 
   currentTabId = await getCurrentTabId();
   await Promise.all([loadHealth(), loadVideos()]);
+  startAutoRefresh();
 }
 
 async function loadVideos(): Promise<void> {
@@ -56,12 +61,19 @@ async function loadVideos(): Promise<void> {
   renderVideoList(currentState.videos);
 }
 
-async function refreshVideos(): Promise<void> {
-  if (currentTabId === null) {
+async function refreshVideos(options: { silent?: boolean } = {}): Promise<void> {
+  if (currentTabId === null || isRefreshing) {
     return;
   }
-  setStatus("正在重新检测页面中的视频…");
+  if (options.silent && isPreviewActive()) {
+    return;
+  }
+
+  isRefreshing = true;
   refreshButton.disabled = true;
+  if (!options.silent) {
+    setStatus("正在重新检测页面中的视频…");
+  }
 
   try {
     const response = await chrome.runtime.sendMessage({
@@ -75,11 +87,19 @@ async function refreshVideos(): Promise<void> {
 
     currentState = response.data as TabVideoState | null;
     hydrateSelection(currentState?.videos ?? []);
-    renderVideoList(currentState?.videos ?? []);
-    setStatus("检测已刷新");
+    syncActiveVideo(currentState?.videos ?? []);
+    if (!(options.silent && isPreviewActive())) {
+      renderVideoList(currentState?.videos ?? []);
+    }
+    if (!options.silent) {
+      setStatus("检测已刷新");
+    }
   } catch (error) {
-    setStatus(toErrorMessage(error));
+    if (!options.silent) {
+      setStatus(toErrorMessage(error));
+    }
   } finally {
+    isRefreshing = false;
     refreshButton.disabled = false;
   }
 }
@@ -107,15 +127,20 @@ async function handleExport(): Promise<void> {
   const exportableVideos = (currentState?.videos ?? []).filter(
     (item) => selectedIds.has(item.id) && item.exportable
   );
-  const duration = Number(durationInput.value);
+  const startTime = Number(startTimeInput.value);
+  const endTime = Number(endTimeInput.value);
   const coverFile = coverInput.files?.[0];
 
   if (!coverFile) {
     setStatus("请先上传图片");
     return;
   }
-  if (!Number.isInteger(duration) || duration <= 0) {
-    setStatus("导出秒数必须是正整数");
+  if (!Number.isFinite(startTime) || startTime < 0 || !Number.isFinite(endTime)) {
+    setStatus("请填写正确的裁剪范围，比如 0 到 8");
+    return;
+  }
+  if (endTime <= startTime) {
+    setStatus("结束秒数必须大于开始秒数");
     return;
   }
   if (!currentState?.pageUrl) {
@@ -127,13 +152,25 @@ async function handleExport(): Promise<void> {
     return;
   }
 
+  const tooShortVideos = exportableVideos.filter(
+    (item) => typeof item.duration === "number" && item.duration > 0 && startTime >= item.duration
+  );
+  if (tooShortVideos.length > 0) {
+    setStatus("开始秒数不能大于或等于视频总时长");
+    return;
+  }
+
   exportButton.disabled = true;
-  setStatus("正在发送导出任务到本地服务…");
+  const willClampToEnd = exportableVideos.some(
+    (item) => typeof item.duration === "number" && item.duration > 0 && endTime > item.duration
+  );
+  setStatus(willClampToEnd ? "部分视频会自动裁到结尾，正在导出…" : "正在发送导出任务到本地服务…");
 
   try {
     const formData = new FormData();
     formData.append("cover", coverFile);
-    formData.append("duration", String(duration));
+    formData.append("startTime", String(startTime));
+    formData.append("endTime", String(endTime));
     formData.append("pageUrl", currentState.pageUrl);
     formData.append("videos", JSON.stringify(exportableVideos.map((item) => item.src)));
 
@@ -169,61 +206,221 @@ function renderVideoList(videos: VideoCandidate[]): void {
 
     const checked = selectedIds.has(item.id) ? "checked" : "";
     const disabled = item.exportable ? "" : "disabled";
-    const posterHtml = item.poster ? `<div class="chip">poster</div>` : "";
-    const durationHtml = item.duration ? `<div class="chip">${item.duration.toFixed(1)}s</div>` : "";
-    const sizeHtml =
-      item.width && item.height ? `<div class="chip">${item.width}x${item.height}</div>` : "";
-    const reasonHtml = item.exportable
-      ? ""
-      : `<div class="chip warn">${escapeHtml(item.unsupportedReason)}</div>`;
+    const activeText = !canPreviewCandidate(item)
+      ? "不可预览"
+      : activeVideoId === item.id
+        ? "播放中"
+        : "悬停预览";
+    const durationText = typeof item.duration === "number" && item.duration > 0 ? `${item.duration.toFixed(1)}s` : "--";
 
     wrapper.innerHTML = `
-      <label>
-        <input type="checkbox" data-id="${escapeHtml(item.id)}" ${checked} ${disabled} />
-        <div>
-          <div class="video-title">${escapeHtml(item.title || "未命名视频")}</div>
-          <div class="video-url">${escapeHtml(item.src)}</div>
-          <div class="meta">
-            <div class="chip">${escapeHtml(item.sourceType)}</div>
-            ${durationHtml}
-            ${sizeHtml}
-            ${posterHtml}
-            ${reasonHtml}
-          </div>
-        </div>
-      </label>
+      <div class="preview-shell">
+        <label class="picker">
+          <input type="checkbox" data-id="${escapeHtml(item.id)}" ${checked} ${disabled} />
+        </label>
+        <div class="duration-chip">${durationText}</div>
+        <img
+          class="preview-image ${item.poster ? "" : "hidden"}"
+          src="${escapeHtml(item.poster || "")}"
+          alt=""
+          loading="lazy"
+          data-preview-image-id="${escapeHtml(item.id)}"
+        />
+        <button class="preview-trigger ${item.poster ? "" : "hidden"}" type="button" data-trigger-id="${escapeHtml(item.id)}" tabindex="-1">
+          <span class="play-overlay">${activeText}</span>
+        </button>
+        <video
+          class="preview ${item.poster ? "hidden" : ""}"
+          controls
+          preload="metadata"
+          muted
+          playsinline
+          data-video-id="${escapeHtml(item.id)}"
+          data-src="${escapeHtml(item.src)}"
+        ></video>
+      </div>
     `;
 
     const checkbox = wrapper.querySelector("input[type=checkbox]") as HTMLInputElement;
-    checkbox?.addEventListener("change", () => {
+    checkbox.addEventListener("change", () => {
       if (checkbox.checked) {
         selectedIds.add(item.id);
       } else {
         selectedIds.delete(item.id);
       }
     });
+
+    const shell = wrapper.querySelector(".preview-shell") as HTMLDivElement;
+    const player = wrapper.querySelector("video") as HTMLVideoElement;
+    const image = wrapper.querySelector("[data-preview-image-id]") as HTMLImageElement | null;
+
+    shell.addEventListener("mouseenter", () => {
+      void activateVideo(item.id, { autoplay: true });
+    });
+    shell.addEventListener("mouseleave", () => {
+      if (activeVideoId === item.id) {
+        stopActivePreview(item.id);
+      }
+    });
+    player.addEventListener("play", () => {
+      void activateVideo(item.id, { autoplay: true });
+    });
+    player.addEventListener("pause", () => {
+      if (activeVideoId === item.id && !player.matches(":hover") && !shell.matches(":hover")) {
+        stopActivePreview(item.id);
+      }
+    });
+    image?.addEventListener("mouseenter", () => {
+      void activateVideo(item.id, { autoplay: true });
+    });
+
     videoList.appendChild(wrapper);
   }
 }
 
-function renderResults(results: ExportResultItem[]): void {
-  if (results.length === 0) {
-    resultList.className = "result-list empty";
-    resultList.textContent = "没有返回结果";
+async function activateVideo(videoId: string, options: { autoplay: boolean }): Promise<void> {
+  if (!currentState) {
     return;
   }
 
-  resultList.className = "result-list";
-  resultList.innerHTML = "";
-  for (const item of results) {
-    const element = document.createElement("div");
-    element.className = "result-item";
-    element.innerHTML = `
-      <div><strong>${item.success ? "成功" : "失败"}</strong></div>
-      <div class="video-url">${escapeHtml(item.src)}</div>
-      <div class="muted">${escapeHtml(item.outputPath || item.error || "")}</div>
-    `;
-    resultList.appendChild(element);
+  const target = currentState.videos.find((item) => item.id === videoId);
+  if (!target || !canPreviewCandidate(target)) {
+    return;
+  }
+
+  for (const element of videoList.querySelectorAll("video")) {
+    const player = element as HTMLVideoElement;
+    if (player.dataset.videoId !== videoId) {
+      releaseVideoElement(player);
+    }
+  }
+
+  activeVideoId = videoId;
+  const activePlayer = findActivePlayer();
+  if (!activePlayer) {
+    return;
+  }
+
+  showVideoPlayer(videoId);
+  ensurePlayerLoaded(activePlayer);
+  activePlayer.muted = false;
+  renderActiveBadge(videoId);
+
+  if (options.autoplay) {
+    try {
+      await activePlayer.play();
+    } catch {
+      // 某些站点视频资源需要用户继续和播放器控件交互，这里不打断界面流程。
+    }
+  }
+}
+
+function ensurePlayerLoaded(player: HTMLVideoElement): void {
+  if (player.dataset.loaded === "true") {
+    return;
+  }
+
+  const src = player.dataset.src;
+  if (!src) {
+    return;
+  }
+
+  player.src = src;
+  player.dataset.loaded = "true";
+  player.load();
+}
+
+function releaseVideoElement(player: HTMLVideoElement): void {
+  player.pause();
+  player.muted = true;
+  player.removeAttribute("src");
+  player.dataset.loaded = "false";
+  player.load();
+
+  const videoId = player.dataset.videoId;
+  if (!videoId) {
+    return;
+  }
+  showPosterPreview(videoId);
+}
+
+function stopActivePreview(videoId: string): void {
+  const player = videoList.querySelector(`video[data-video-id="${CSS.escape(videoId)}"]`) as HTMLVideoElement | null;
+  if (!player) {
+    return;
+  }
+  releaseVideoElement(player);
+  if (activeVideoId === videoId) {
+    activeVideoId = null;
+    renderActiveBadge("");
+  }
+}
+
+function renderActiveBadge(videoId: string): void {
+  for (const item of videoList.querySelectorAll(".video-item")) {
+    const player = item.querySelector("video") as HTMLVideoElement | null;
+    const badge = item.querySelector(".play-overlay") as HTMLElement | null;
+    if (!player || !badge) {
+      continue;
+    }
+    if (badge.textContent === "不可预览") {
+      continue;
+    }
+    badge.textContent = player.dataset.videoId === videoId ? "播放中" : "悬停预览";
+  }
+}
+
+function findActivePlayer(): HTMLVideoElement | null {
+  if (!activeVideoId) {
+    return null;
+  }
+  return videoList.querySelector(`video[data-video-id="${CSS.escape(activeVideoId)}"]`) as HTMLVideoElement | null;
+}
+
+function startAutoRefresh(): void {
+  if (refreshTimer !== null) {
+    window.clearInterval(refreshTimer);
+  }
+
+  refreshTimer = window.setInterval(() => {
+    void loadHealth();
+    if (!isPreviewActive()) {
+      void refreshVideos({ silent: true });
+    }
+  }, 5000);
+}
+
+function isPreviewActive(): boolean {
+  if (!activeVideoId) {
+    return false;
+  }
+
+  const activePlayer = findActivePlayer();
+  if (!activePlayer) {
+    return false;
+  }
+
+  const shell = activePlayer.closest(".preview-shell");
+  return !activePlayer.paused || Boolean(shell?.matches(":hover"));
+}
+
+function showVideoPlayer(videoId: string): void {
+  const image = videoList.querySelector(`[data-preview-image-id="${CSS.escape(videoId)}"]`) as HTMLImageElement | null;
+  const trigger = videoList.querySelector(`[data-trigger-id="${CSS.escape(videoId)}"]`) as HTMLButtonElement | null;
+  const player = videoList.querySelector(`video[data-video-id="${CSS.escape(videoId)}"]`) as HTMLVideoElement | null;
+  image?.classList.add("hidden");
+  trigger?.classList.add("hidden");
+  player?.classList.remove("hidden");
+}
+
+function showPosterPreview(videoId: string): void {
+  const image = videoList.querySelector(`[data-preview-image-id="${CSS.escape(videoId)}"]`) as HTMLImageElement | null;
+  const trigger = videoList.querySelector(`[data-trigger-id="${CSS.escape(videoId)}"]`) as HTMLButtonElement | null;
+  const player = videoList.querySelector(`video[data-video-id="${CSS.escape(videoId)}"]`) as HTMLVideoElement | null;
+  if (image && image.getAttribute("src")) {
+    image.classList.remove("hidden");
+    trigger?.classList.remove("hidden");
+    player?.classList.add("hidden");
   }
 }
 
@@ -257,6 +454,40 @@ function hydrateSelection(videos: VideoCandidate[]): void {
   selectedIds = new Set([...selectedIds].filter((id) => availableIds.has(id)));
 }
 
+function syncActiveVideo(videos: VideoCandidate[]): void {
+  if (
+    activeVideoId &&
+    !videos.some((item) => item.id === activeVideoId && canPreviewCandidate(item))
+  ) {
+    activeVideoId = null;
+  }
+}
+
+function canPreviewCandidate(candidate: VideoCandidate): boolean {
+  return !candidate.src.startsWith("blob:");
+}
+
+function renderResults(results: ExportResultItem[]): void {
+  if (results.length === 0) {
+    resultList.className = "result-list empty";
+    resultList.textContent = "没有返回结果";
+    return;
+  }
+
+  resultList.className = "result-list";
+  resultList.innerHTML = "";
+  for (const item of results) {
+    const element = document.createElement("div");
+    element.className = "result-item";
+    element.innerHTML = `
+      <div><strong>${item.success ? "成功" : "失败"}</strong></div>
+      <div class="video-url">${escapeHtml(item.src)}</div>
+      <div class="muted">${escapeHtml(item.outputPath || item.error || "")}</div>
+    `;
+    resultList.appendChild(element);
+  }
+}
+
 function setStatus(text: string): void {
   statusText.textContent = text;
 }
@@ -282,3 +513,11 @@ function escapeHtml(value: string): string {
     .replaceAll("'", "&#39;");
 }
 
+window.addEventListener("beforeunload", () => {
+  if (refreshTimer !== null) {
+    window.clearInterval(refreshTimer);
+  }
+  for (const element of videoList.querySelectorAll("video")) {
+    releaseVideoElement(element as HTMLVideoElement);
+  }
+});

@@ -8,23 +8,20 @@
   </head>
   <body>
     <div class="app">
-      <header class="topbar">
-        <div>
-          <h1>视频导出</h1>
-          <p id="page-meta" class="muted">等待页面数据…</p>
-        </div>
-        <button id="refresh-btn" class="ghost" type="button">刷新检测</button>
-      </header>
+      <div class="sticky-shell">
+        <header class="topbar card chrome">
+          <div class="title-wrap">
+            <h1>视频导出</h1>
+            <p id="page-meta" class="muted">等待页面数据…</p>
+          </div>
+          <div class="top-actions">
+            <span id="health-badge" class="badge pending">检测中</span>
+            <button id="refresh-btn" class="ghost" type="button">刷新检测</button>
+          </div>
+        </header>
+      </div>
 
-      <section class="card">
-        <div class="row spread">
-          <strong>本地服务</strong>
-          <span id="health-badge" class="badge pending">检测中</span>
-        </div>
-        <p id="health-text" class="muted">正在检查本地服务状态</p>
-      </section>
-
-      <section class="card">
+      <section class="card compact">
         <div class="row spread">
           <strong>视频列表</strong>
           <div class="row">
@@ -32,17 +29,26 @@
             <button id="invert-btn" class="ghost small" type="button">反选</button>
           </div>
         </div>
+        <p id="health-text" class="muted inline-status">正在检查本地服务状态</p>
         <div id="video-list" class="video-list"></div>
       </section>
 
       <section class="card">
+        <div class="export-header">
+          <strong>导出设置</strong>
+          <span class="muted small-text">每 5 秒自动刷新</span>
+        </div>
         <label class="field">
           <span>上传图片</span>
           <input id="cover-input" type="file" accept="image/*" />
         </label>
         <label class="field">
-          <span>导出秒数</span>
-          <input id="duration-input" type="number" min="1" step="1" value="10" />
+          <span>开始秒数</span>
+          <input id="start-time-input" type="number" min="0" step="1" value="0" />
+        </label>
+        <label class="field">
+          <span>结束秒数</span>
+          <input id="end-time-input" type="number" min="1" step="1" value="8" />
         </label>
         <button id="export-btn" class="primary" type="button">导出</button>
         <p id="status-text" class="muted"></p>
@@ -56,5 +62,4 @@
 
     <script type="module" src="./sidepanel.js"></script>
   </body>
-  </html>
-
+</html>
