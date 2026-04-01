@@ -7,4 +7,7 @@ coverage
 local-server/output
 local-server/tmp
 local-server/fixtures
+local-server/release
+local-server/release-win
+local-server/.pkg-cache
 extension/dist

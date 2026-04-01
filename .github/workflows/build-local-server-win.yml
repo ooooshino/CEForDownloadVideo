@@ -1,0 +1,37 @@
+name: Build Windows Local Server
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-win:
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+          cache-dependency-path: local-server/package-lock.json
+
+      - name: Install dependencies
+        working-directory: local-server
+        run: npm ci
+
+      - name: Build Windows executable
+        working-directory: local-server
+        run: npm run build:win
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VideoExportLocalServer-win-x64
+          path: local-server/release-win/VideoExportLocalServer.exe
