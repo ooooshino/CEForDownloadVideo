@@ -9,53 +9,68 @@
   <body>
     <div class="app">
       <div class="sticky-shell">
-        <header class="topbar card chrome">
-          <div class="title-wrap">
+        <header class="topbar panel surface elevated">
+          <div class="title-wrap stack">
+            <div class="eyebrow">Video Export</div>
             <h1>视频导出</h1>
             <p id="page-meta" class="muted">等待页面数据…</p>
           </div>
           <div class="top-actions">
             <span id="health-badge" class="badge pending">检测中</span>
-            <button id="refresh-btn" class="ghost" type="button">刷新检测</button>
+            <button id="refresh-btn" class="button secondary" type="button">刷新检测</button>
           </div>
         </header>
       </div>
 
-      <section class="card compact">
-        <div class="row spread">
-          <strong>视频列表</strong>
+      <section class="panel surface">
+        <div class="section-head">
+          <div class="stack tight">
+            <strong class="section-title">视频列表</strong>
+            <p id="health-text" class="muted inline-status">正在检查本地服务状态</p>
+          </div>
           <div class="row">
-            <button id="select-all-btn" class="ghost small" type="button">全选</button>
-            <button id="invert-btn" class="ghost small" type="button">反选</button>
+            <button id="select-all-btn" class="button secondary small" type="button">全选</button>
+            <button id="invert-btn" class="button secondary small" type="button">反选</button>
           </div>
         </div>
-        <p id="health-text" class="muted inline-status">正在检查本地服务状态</p>
         <div id="video-list" class="video-list"></div>
       </section>
 
-      <section class="card">
-        <div class="export-header">
-          <strong>导出设置</strong>
+      <section class="panel surface">
+        <div class="section-head">
+          <div class="stack tight">
+            <strong class="section-title">导出设置</strong>
+            <p class="muted">上传图片后，按开始和结束秒数裁切导出。</p>
+          </div>
           <span class="muted small-text">每 5 秒自动刷新</span>
         </div>
-        <label class="field">
-          <span>上传图片</span>
-          <input id="cover-input" type="file" accept="image/*" />
-        </label>
-        <label class="field">
-          <span>开始秒数</span>
-          <input id="start-time-input" type="number" min="0" step="1" value="0" />
-        </label>
-        <label class="field">
-          <span>结束秒数</span>
-          <input id="end-time-input" type="number" min="1" step="1" value="8" />
-        </label>
-        <button id="export-btn" class="primary" type="button">导出</button>
-        <p id="status-text" class="muted"></p>
+        <div class="form-grid">
+          <label class="field">
+            <span class="field-label">上传图片</span>
+            <input id="cover-input" class="input file-input" type="file" accept="image/*" />
+          </label>
+          <div class="range-grid">
+            <label class="field">
+              <span class="field-label">开始秒数</span>
+              <input id="start-time-input" class="input" type="number" min="0" step="1" value="0" />
+            </label>
+            <label class="field">
+              <span class="field-label">结束秒数</span>
+              <input id="end-time-input" class="input" type="number" min="1" step="1" value="8" />
+            </label>
+          </div>
+        </div>
+        <button id="export-btn" class="button primary block" type="button">导出</button>
+        <p id="status-text" class="muted status-line"></p>
       </section>
 
-      <section class="card">
-        <strong>批量结果</strong>
+      <section class="panel surface">
+        <div class="section-head">
+          <div class="stack tight">
+            <strong class="section-title">批量结果</strong>
+            <p class="muted">每个视频分别返回成功或失败。</p>
+          </div>
+        </div>
         <div id="result-list" class="result-list empty">还没有导出结果</div>
       </section>
     </div>
