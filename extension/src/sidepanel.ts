@@ -78,7 +78,7 @@ async function refreshVideos(options: { silent?: boolean } = {}): Promise<void> 
   try {
     const response = await chrome.runtime.sendMessage({
       type: "REQUEST_TAB_REFRESH",
-      payload: { tabId: currentTabId }
+      payload: { tabId: currentTabId, force: !options.silent }
     });
 
     if (!response.ok) {
@@ -220,17 +220,17 @@ function renderVideoList(videos: VideoCandidate[]): void {
         </label>
         <div class="duration-chip">${durationText}</div>
         <img
-          class="preview-image ${item.poster ? "" : "hidden"}"
-          src="${escapeHtml(item.poster || "")}"
+          class="preview-image"
+          ${item.poster ? `src="${escapeHtml(item.poster)}"` : ""}
           alt=""
           loading="lazy"
           data-preview-image-id="${escapeHtml(item.id)}"
         />
-        <button class="preview-trigger ${item.poster ? "" : "hidden"}" type="button" data-trigger-id="${escapeHtml(item.id)}" tabindex="-1">
+        <button class="preview-trigger" type="button" data-trigger-id="${escapeHtml(item.id)}" tabindex="-1">
           <span class="play-overlay">${activeText}</span>
         </button>
         <video
-          class="preview ${item.poster ? "hidden" : ""}"
+          class="preview hidden"
           controls
           preload="metadata"
           muted

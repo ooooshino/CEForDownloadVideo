@@ -5,6 +5,7 @@ export interface VideoCandidate {
   src: string;
   title: string;
   poster: string;
+  pageLink: string;
   duration: number | null;
   width: number | null;
   height: number | null;
@@ -27,4 +28,3 @@ export interface ExportResultItem {
   outputPath?: string;
   error?: string;
 }
-

@@ -6,6 +6,70 @@ export function normalizeVideoUrl(value: string): string {
   return value.trim();
 }
 
+export function createCandidateKey(src: string): string {
+  const normalized = normalizeVideoUrl(src);
+
+  if (normalized.startsWith("blob:")) {
+    return normalized;
+  }
+
+  try {
+    const url = new URL(normalized);
+    const pathname = url.pathname
+      .replace(/\/+/g, "/")
+      .replace(/-(?:mobile|small|medium|large|sd|hd|hq)(?=\.[a-z0-9]+$)/i, "")
+      .replace(/(?:^|\/)(?:thumbnail|thumb|poster)(?=[-_./])/i, "/preview");
+
+    return `${url.hostname}${pathname}`.toLowerCase();
+  } catch {
+    return normalized.toLowerCase();
+  }
+}
+
+function normalizeAssetUrl(value: string): string {
+  if (!value) {
+    return "";
+  }
+
+  try {
+    const url = new URL(value, "https://placeholder.local");
+    return `${url.hostname}${url.pathname}`.toLowerCase();
+  } catch {
+    return value.toLowerCase();
+  }
+}
+
+function normalizePageLink(value: string): string {
+  if (!value) {
+    return "";
+  }
+
+  try {
+    const url = new URL(value);
+    return `${url.hostname}${url.pathname}`.replace(/\/+$/, "").toLowerCase();
+  } catch {
+    return value.toLowerCase();
+  }
+}
+
+export function createMergeKey(candidate: Pick<VideoCandidate, "src" | "poster" | "pageLink">): string {
+  if (!isRedgifsCandidate(candidate)) {
+    return `src:${createCandidateKey(candidate.src)}`;
+  }
+
+  const pageLink = normalizePageLink(candidate.pageLink);
+  if (pageLink) {
+    return `page:${pageLink}`;
+  }
+
+  const poster = normalizeAssetUrl(candidate.poster);
+  if (poster) {
+    return `poster:${poster}`;
+  }
+
+  return `src:${createCandidateKey(candidate.src)}`;
+}
+
 export function inferExportability(src: string): Pick<VideoCandidate, "exportable" | "unsupportedReason"> {
   const lower = src.toLowerCase();
 
@@ -36,7 +100,7 @@ export function mergeCandidates(existing: VideoCandidate[], incoming: VideoCandi
   const map = new Map<string, VideoCandidate>();
 
   for (const item of [...existing, ...incoming]) {
-    const key = normalizeVideoUrl(item.src);
+    const key = createMergeKey(item);
     const previous = map.get(key);
     if (!previous) {
       map.set(key, item);
@@ -48,9 +112,11 @@ export function mergeCandidates(existing: VideoCandidate[], incoming: VideoCandi
       ...item,
       title: item.title || previous.title,
       poster: item.poster || previous.poster,
+      pageLink: item.pageLink || previous.pageLink,
       duration: item.duration ?? previous.duration,
       width: item.width ?? previous.width,
       height: item.height ?? previous.height,
+      src: chooseBetterSource(previous.src, item.src),
       exportable: previous.exportable || item.exportable,
       unsupportedReason: previous.exportable ? previous.unsupportedReason : item.unsupportedReason || previous.unsupportedReason
     });
@@ -63,6 +129,7 @@ export function makeCandidate(input: {
   src: string;
   title?: string;
   poster?: string;
+  pageLink?: string;
   duration?: number | null;
   width?: number | null;
   height?: number | null;
@@ -76,6 +143,7 @@ export function makeCandidate(input: {
     src,
     title: input.title ?? "",
     poster: input.poster ?? "",
+    pageLink: input.pageLink ?? "",
     duration: input.duration ?? null,
     width: input.width ?? null,
     height: input.height ?? null,
@@ -108,3 +176,24 @@ function simpleHash(input: string): string {
   return Math.abs(hash).toString(36);
 }
 
+function chooseBetterSource(previous: string, next: string): string {
+  const score = (value: string) => {
+    const lower = value.toLowerCase();
+    if (lower.startsWith("blob:")) {
+      return 0;
+    }
+    if (lower.includes("thumbnail") || lower.includes("thumb")) {
+      return 1;
+    }
+    if (lower.includes(".mp4")) {
+      return 3;
+    }
+    return 2;
+  };
+
+  return score(next) >= score(previous) ? next : previous;
+}
+
+function isRedgifsCandidate(candidate: Pick<VideoCandidate, "src" | "poster" | "pageLink">): boolean {
+  return [candidate.src, candidate.poster, candidate.pageLink].some((value) => value.includes("redgifs.com"));
+}

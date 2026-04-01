@@ -229,6 +229,12 @@ h1 {
   background: linear-gradient(180deg, #e2e8f0, #cbd5e1);
 }
 
+.preview-image:not([src]) {
+  background:
+    linear-gradient(180deg, rgba(226, 232, 240, 0.95), rgba(203, 213, 225, 0.98)),
+    linear-gradient(135deg, rgba(148, 163, 184, 0.16), rgba(15, 23, 42, 0.04));
+}
+
 .preview.hidden,
 .preview-image.hidden,
 .preview-trigger.hidden {
