@@ -1,0 +1,44 @@
+{
+  "manifest_version": 3,
+  "name": "Video Export Side Panel MVP",
+  "version": "0.1.0",
+  "description": "Collects video candidates and sends export jobs to a local Node.js + FFmpeg service.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": ["sidePanel", "storage", "tabs", "webRequest"],
+  "host_permissions": [
+    "https://www.xfree.com/*",
+    "https://fyptt.to/*",
+    "https://www.redgifs.com/*",
+    "http://127.0.0.1:37891/*"
+  ],
+  "background": {
+    "service_worker": "service-worker.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Open video export panel",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png"
+    }
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.xfree.com/*",
+        "https://fyptt.to/*",
+        "https://www.redgifs.com/*"
+      ],
+      "js": ["content-script.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

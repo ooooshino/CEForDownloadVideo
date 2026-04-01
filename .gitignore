@@ -1,0 +1,10 @@
+node_modules
+dist
+build
+.DS_Store
+*.log
+coverage
+local-server/output
+local-server/tmp
+extension/dist
+

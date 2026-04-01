@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Video Export</title>
+    <link rel="stylesheet" href="./sidepanel.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div>
+          <h1>视频导出</h1>
+          <p id="page-meta" class="muted">等待页面数据…</p>
+        </div>
+        <button id="refresh-btn" class="ghost" type="button">刷新检测</button>
+      </header>
+
+      <section class="card">
+        <div class="row spread">
+          <strong>本地服务</strong>
+          <span id="health-badge" class="badge pending">检测中</span>
+        </div>
+        <p id="health-text" class="muted">正在检查本地服务状态</p>
+      </section>
+
+      <section class="card">
+        <div class="row spread">
+          <strong>视频列表</strong>
+          <div class="row">
+            <button id="select-all-btn" class="ghost small" type="button">全选</button>
+            <button id="invert-btn" class="ghost small" type="button">反选</button>
+          </div>
+        </div>
+        <div id="video-list" class="video-list"></div>
+      </section>
+
+      <section class="card">
+        <label class="field">
+          <span>上传图片</span>
+          <input id="cover-input" type="file" accept="image/*" />
+        </label>
+        <label class="field">
+          <span>导出秒数</span>
+          <input id="duration-input" type="number" min="1" step="1" value="10" />
+        </label>
+        <button id="export-btn" class="primary" type="button">导出</button>
+        <p id="status-text" class="muted"></p>
+      </section>
+
+      <section class="card">
+        <strong>批量结果</strong>
+        <div id="result-list" class="result-list empty">还没有导出结果</div>
+      </section>
+    </div>
+
+    <script type="module" src="./sidepanel.js"></script>
+  </body>
+  </html>
+
