@@ -26,12 +26,21 @@ jobs:
         working-directory: local-server
         run: npm ci
 
+      - name: Install ffmpeg
+        run: choco install ffmpeg -y
+
       - name: Build Windows executable
         working-directory: local-server
         run: npm run build:win
+
+      - name: Copy ffmpeg tools
+        working-directory: local-server
+        run: |
+          Copy-Item "C:\ProgramData\chocolatey\bin\ffmpeg.exe" "release-win\ffmpeg.exe"
+          Copy-Item "C:\ProgramData\chocolatey\bin\ffprobe.exe" "release-win\ffprobe.exe"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: VideoExportLocalServer-win-x64
-          path: local-server/release-win/VideoExportLocalServer.exe
+          path: local-server/release-win/*

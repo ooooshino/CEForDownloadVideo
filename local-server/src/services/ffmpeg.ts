@@ -1,5 +1,7 @@
 import { writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
+import path from "node:path";
+import { existsSync } from "node:fs";
 import { createTempFilePath, getOutputPath, buildOutputFileName } from "../utils/files.js";
 import { logInfo } from "../utils/logger.js";
 
@@ -238,7 +240,7 @@ async function probeVideo(inputPath: string): Promise<ProbeInfo> {
 
 async function commandAvailable(command: string): Promise<boolean> {
   try {
-    await runCommand("which", [command]);
+    await resolveCommand(command);
     return true;
   } catch {
     return false;
@@ -247,7 +249,7 @@ async function commandAvailable(command: string): Promise<boolean> {
 
 async function runCommand(command: string, args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args);
+    const child = spawn(resolveCommandSync(command), args);
     let stdout = "";
     let stderr = "";
 
@@ -271,6 +273,31 @@ async function runCommand(command: string, args: string[]): Promise<string> {
       reject(new Error(`${command} 执行失败(${code}): ${stderr || stdout}`));
     });
   });
+}
+
+async function resolveCommand(command: string): Promise<string> {
+  return resolveCommandSync(command);
+}
+
+function resolveCommandSync(command: string): string {
+  const candidates = [
+    process.env[command === "ffmpeg" ? "FFMPEG_PATH" : "FFPROBE_PATH"],
+    path.join(path.dirname(process.execPath), command === "ffmpeg" ? executableName("ffmpeg") : executableName("ffprobe")),
+    path.join(process.cwd(), command === "ffmpeg" ? executableName("ffmpeg") : executableName("ffprobe")),
+    command
+  ].filter(Boolean) as string[];
+
+  for (const candidate of candidates) {
+    if (candidate === command || existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return command;
+}
+
+function executableName(command: "ffmpeg" | "ffprobe"): string {
+  return process.platform === "win32" ? `${command}.exe` : command;
 }
 
 function escapeForConcat(filePath: string): string {
