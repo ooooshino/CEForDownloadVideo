@@ -12,12 +12,6 @@ const bundleFile = path.join(releaseDir, "server.cjs");
 const binaryFile = path.join(releaseDir, "VideoExportLocalServer.exe");
 const launcherFile = path.join(releaseDir, "启动本地视频服务.bat");
 const readmeFile = path.join(releaseDir, "使用说明.txt");
-const pkgBin = path.join(
-  __dirname,
-  "node_modules",
-  ".bin",
-  process.platform === "win32" ? "pkg.cmd" : "pkg"
-);
 
 await rm(releaseDir, { recursive: true, force: true });
 await mkdir(releaseDir, { recursive: true });
@@ -62,13 +56,13 @@ console.log(`Windows executable ready: ${binaryFile}`);
 
 async function runPkg(args) {
   if (process.platform === "win32") {
-    await execFileAsync("cmd.exe", ["/c", pkgBin, ...args], {
+    await execFileAsync("cmd.exe", ["/c", "npx", "pkg", ...args], {
       cwd: __dirname
     });
     return;
   }
 
-  await execFileAsync(pkgBin, args, {
+  await execFileAsync("npx", ["pkg", ...args], {
     cwd: __dirname
   });
 }
