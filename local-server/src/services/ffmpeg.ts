@@ -31,6 +31,12 @@ interface OutputSize {
 export async function checkFfmpegInstalled(): Promise<{ ffmpeg: boolean; ffprobe: boolean }> {
   const ffmpeg = await commandAvailable("ffmpeg");
   const ffprobe = await commandAvailable("ffprobe");
+  logInfo("ffmpeg tool availability", {
+    ffmpeg,
+    ffprobe,
+    ffmpegCandidates: resolveCommandCandidates("ffmpeg"),
+    ffprobeCandidates: resolveCommandCandidates("ffprobe")
+  });
   return { ffmpeg, ffprobe };
 }
 

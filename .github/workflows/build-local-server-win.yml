@@ -39,6 +39,13 @@ jobs:
           Copy-Item "C:\ProgramData\chocolatey\lib\ffmpeg\tools\ffmpeg\bin\ffmpeg.exe" "release-win\ffmpeg.exe"
           Copy-Item "C:\ProgramData\chocolatey\lib\ffmpeg\tools\ffmpeg\bin\ffprobe.exe" "release-win\ffprobe.exe"
 
+      - name: Verify bundled ffmpeg binaries
+        working-directory: local-server
+        run: |
+          Get-ChildItem .\release-win | Select-Object Name,Length
+          & ".\release-win\ffmpeg.exe" -version
+          & ".\release-win\ffprobe.exe" -version
+
       - name: Verify packaged server health
         working-directory: local-server
         run: |
