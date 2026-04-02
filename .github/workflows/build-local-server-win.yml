@@ -36,8 +36,8 @@ jobs:
       - name: Copy ffmpeg tools
         working-directory: local-server
         run: |
-          Copy-Item "C:\ProgramData\chocolatey\bin\ffmpeg.exe" "release-win\ffmpeg.exe"
-          Copy-Item "C:\ProgramData\chocolatey\bin\ffprobe.exe" "release-win\ffprobe.exe"
+          Copy-Item "C:\ProgramData\chocolatey\lib\ffmpeg\tools\ffmpeg\bin\ffmpeg.exe" "release-win\ffmpeg.exe"
+          Copy-Item "C:\ProgramData\chocolatey\lib\ffmpeg\tools\ffmpeg\bin\ffprobe.exe" "release-win\ffprobe.exe"
 
       - name: Verify packaged server health
         working-directory: local-server

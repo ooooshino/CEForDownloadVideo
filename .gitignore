@@ -14,5 +14,6 @@ extension/dist
 local-server/bin/*
 !local-server/bin/
 !local-server/bin/win32-x64/
+local-server/bin/win32-x64/*
 !local-server/bin/win32-x64/.gitkeep
 Thumbs.db
