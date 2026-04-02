@@ -271,23 +271,79 @@ async function probeVideo(inputPath: string): Promise<ProbeInfo> {
 }
 
 async function commandAvailable(command: string): Promise<boolean> {
-  const resolved = resolveCommandSync(command);
-  return new Promise((resolve) => {
-    const child = spawn(resolved, ["-version"]);
+  for (const candidate of resolveCommandCandidates(command)) {
+    const available = await new Promise<boolean>((resolve) => {
+      const child = spawn(candidate, ["-version"]);
 
-    child.on("error", () => {
-      resolve(false);
+      child.on("error", () => {
+        resolve(false);
+      });
+
+      child.on("close", (code) => {
+        resolve(code === 0);
+      });
     });
 
-    child.on("close", (code) => {
-      resolve(code === 0);
-    });
-  });
+    if (available) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 async function runCommand(command: string, args: string[]): Promise<string> {
+  let lastError: Error | null = null;
+
+  for (const candidate of resolveCommandCandidates(command)) {
+    try {
+      return await runCommandOnce(candidate, command, args);
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+    }
+  }
+
+  throw lastError ?? new Error(`找不到可用的 ${command}`);
+}
+
+function resolveCommandCandidates(command: string): string[] {
+  const executable = command === "ffmpeg" ? executableName("ffmpeg") : executableName("ffprobe");
+  return [
+    process.env[command === "ffmpeg" ? "FFMPEG_PATH" : "FFPROBE_PATH"],
+    path.join(path.dirname(process.execPath), executable),
+    path.join(path.dirname(process.argv[0] || process.execPath), executable),
+    path.join(process.cwd(), executable),
+    ...resolveBundledCommandCandidates(executable),
+    command
+  ].filter((candidate): candidate is string => {
+    if (!candidate) {
+      return false;
+    }
+    return candidate === command || existsSync(candidate);
+  });
+}
+
+function executableName(command: "ffmpeg" | "ffprobe"): string {
+  return process.platform === "win32" ? `${command}.exe` : command;
+}
+
+function resolveBundledCommandCandidates(executable: string): string[] {
+  const cwd = process.cwd();
+  const platformArch = `${process.platform}-${process.arch}`;
+
+  return [
+    path.join(cwd, "bin", executable),
+    path.join(cwd, "bin", platformArch, executable),
+    path.join(cwd, "bin", process.platform, process.arch, executable),
+    path.join(cwd, "..", "bin", executable),
+    path.join(cwd, "..", "bin", platformArch, executable),
+    path.join(cwd, "..", "bin", process.platform, process.arch, executable)
+  ];
+}
+
+async function runCommandOnce(candidate: string, command: string, args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawn(resolveCommandSync(command), args);
+    const child = spawn(candidate, args);
     let stdout = "";
     let stderr = "";
 
@@ -311,43 +367,6 @@ async function runCommand(command: string, args: string[]): Promise<string> {
       reject(new Error(`${command} 执行失败(${code}): ${stderr || stdout}`));
     });
   });
-}
-
-function resolveCommandSync(command: string): string {
-  const executable = command === "ffmpeg" ? executableName("ffmpeg") : executableName("ffprobe");
-  const candidates = [
-    process.env[command === "ffmpeg" ? "FFMPEG_PATH" : "FFPROBE_PATH"],
-    path.join(path.dirname(process.execPath), executable),
-    path.join(process.cwd(), executable),
-    ...resolveBundledCommandCandidates(executable),
-    command
-  ].filter(Boolean) as string[];
-
-  for (const candidate of candidates) {
-    if (candidate === command || existsSync(candidate)) {
-      return candidate;
-    }
-  }
-
-  return command;
-}
-
-function executableName(command: "ffmpeg" | "ffprobe"): string {
-  return process.platform === "win32" ? `${command}.exe` : command;
-}
-
-function resolveBundledCommandCandidates(executable: string): string[] {
-  const cwd = process.cwd();
-  const platformArch = `${process.platform}-${process.arch}`;
-
-  return [
-    path.join(cwd, "bin", executable),
-    path.join(cwd, "bin", platformArch, executable),
-    path.join(cwd, "bin", process.platform, process.arch, executable),
-    path.join(cwd, "..", "bin", executable),
-    path.join(cwd, "..", "bin", platformArch, executable),
-    path.join(cwd, "..", "bin", process.platform, process.arch, executable)
-  ];
 }
 
 function escapeForConcat(filePath: string): string {

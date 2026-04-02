@@ -42,7 +42,7 @@ jobs:
       - name: Verify packaged server health
         working-directory: local-server
         run: |
-          $proc = Start-Process -FilePath ".\release-win\VideoExportLocalServer.exe" -WorkingDirectory ".\release-win" -PassThru
+          $proc = Start-Process -FilePath ".\release-win\Start-Local-Video-Server.bat" -WorkingDirectory ".\release-win" -PassThru
           try {
             $health = $null
             for ($i = 0; $i -lt 20; $i++) {
@@ -66,8 +66,12 @@ jobs:
             }
           }
 
+      - name: Pack release zip
+        working-directory: local-server
+        run: Compress-Archive -Path .\release-win\* -DestinationPath .\VideoExportLocalServer-win-x64.zip -Force
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: VideoExportLocalServer-win-x64
-          path: local-server/release-win/*
+          path: local-server/VideoExportLocalServer-win-x64.zip
