@@ -110,19 +110,22 @@ async function loadHealth(): Promise<void> {
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
-    const data = (await response.json()) as { ok: boolean; ffmpeg: boolean };
-    healthBadge.textContent = data.ok ? "正常" : "异常";
+    const data = (await response.json()) as { ok: boolean; ffmpeg: boolean; ffprobe: boolean };
+    healthBadge.textContent = data.ok ? "OK" : "Error";
     healthBadge.className = `badge ${data.ok ? "ok" : "error"}`;
-    healthText.textContent = data.ffmpeg
-      ? "本地服务和 ffmpeg 都已就绪"
-      : "本地服务已启动，但 ffmpeg 不可用";
+
+    if (data.ffmpeg && data.ffprobe) {
+      healthText.textContent = "Local server, ffmpeg, and ffprobe are ready.";
+    } else {
+      const missing = [data.ffmpeg ? null : "ffmpeg", data.ffprobe ? null : "ffprobe"].filter(Boolean);
+      healthText.textContent = `Local server is running, but missing ${missing.join(" / ")}.`;
+    }
   } catch (error) {
-    healthBadge.textContent = "未连接";
+    healthBadge.textContent = "Offline";
     healthBadge.className = "badge error";
-    healthText.textContent = `无法连接本地服务：${toErrorMessage(error)}`;
+    healthText.textContent = `Cannot connect to local server: ${toErrorMessage(error)}`;
   }
 }
-
 async function handleExport(): Promise<void> {
   const exportableVideos = (currentState?.videos ?? []).filter(
     (item) => selectedIds.has(item.id) && item.exportable

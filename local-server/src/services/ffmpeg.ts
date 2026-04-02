@@ -1,4 +1,4 @@
-import { writeFile } from "node:fs/promises";
+﻿import { rename, rm, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { existsSync } from "node:fs";
@@ -37,16 +37,16 @@ export async function checkFfmpegInstalled(): Promise<{ ffmpeg: boolean; ffprobe
 export async function processVideo(input: ProcessVideoInput): Promise<string> {
   const tools = await checkFfmpegInstalled();
   if (!tools.ffmpeg) {
-    throw new Error("系统里找不到 ffmpeg，请先安装 ffmpeg");
+    throw new Error("找不到 ffmpeg。请设置 FFMPEG_PATH，或把 ffmpeg 放到 exe 同目录 / local-server/bin，再不行才回退 PATH。");
   }
   if (!tools.ffprobe) {
-    throw new Error("系统里找不到 ffprobe，请先安装 ffprobe");
+    throw new Error("找不到 ffprobe。请设置 FFPROBE_PATH，或把 ffprobe 放到 exe 同目录 / local-server/bin，再不行才回退 PATH。");
   }
 
   const probe = await probeVideo(input.downloadPath);
   const outputSize = resolveOutputSize(probe.width, probe.height);
   if (input.startTime >= probe.duration) {
-    throw new Error(`开始秒数不能大于或等于视频总时长(${probe.duration.toFixed(2)}s)`);
+    throw new Error(`开始秒数不能大于或等于视频总时长 (${probe.duration.toFixed(2)}s)`);
   }
 
   const effectiveEndTime = Math.min(input.endTime, probe.duration);
@@ -102,7 +102,39 @@ export async function processVideo(input: ProcessVideoInput): Promise<string> {
 
   logInfo("Running ffmpeg export", { src: input.src, args: concatArgs });
   await runCommand("ffmpeg", concatArgs);
+  await attachCoverArt(outputPath, input.coverPath, input.jobDir);
   return outputPath;
+}
+
+async function attachCoverArt(outputPath: string, coverPath: string, jobDir: string): Promise<void> {
+  const taggedOutputPath = createTempFilePath(jobDir, "with-cover.mp4");
+  const args = [
+    "-y",
+    "-i",
+    outputPath,
+    "-i",
+    coverPath,
+    "-map",
+    "0",
+    "-map",
+    "1",
+    "-c",
+    "copy",
+    "-c:v:1",
+    "mjpeg",
+    "-disposition:v:1",
+    "attached_pic",
+    "-metadata:s:v:1",
+    "title=Cover",
+    "-metadata:s:v:1",
+    "comment=Cover (front)",
+    taggedOutputPath
+  ];
+
+  logInfo("Embedding uploaded cover art", { outputPath, coverPath });
+  await runCommand("ffmpeg", args);
+  await rm(outputPath, { force: true });
+  await rename(taggedOutputPath, outputPath);
 }
 
 async function createIntroClip(
@@ -232,19 +264,25 @@ async function probeVideo(inputPath: string): Promise<ProbeInfo> {
     .includes("audio");
 
   if (!Number.isFinite(duration) || duration <= 0 || codecType !== "video" || !width || !height) {
-    throw new Error("无法识别源视频时长");
+    throw new Error("无法识别源视频时长或分辨率");
   }
 
   return { duration, hasAudio, width, height };
 }
 
 async function commandAvailable(command: string): Promise<boolean> {
-  try {
-    await resolveCommand(command);
-    return true;
-  } catch {
-    return false;
-  }
+  const resolved = resolveCommandSync(command);
+  return new Promise((resolve) => {
+    const child = spawn(resolved, ["-version"]);
+
+    child.on("error", () => {
+      resolve(false);
+    });
+
+    child.on("close", (code) => {
+      resolve(code === 0);
+    });
+  });
 }
 
 async function runCommand(command: string, args: string[]): Promise<string> {
@@ -275,15 +313,13 @@ async function runCommand(command: string, args: string[]): Promise<string> {
   });
 }
 
-async function resolveCommand(command: string): Promise<string> {
-  return resolveCommandSync(command);
-}
-
 function resolveCommandSync(command: string): string {
+  const executable = command === "ffmpeg" ? executableName("ffmpeg") : executableName("ffprobe");
   const candidates = [
     process.env[command === "ffmpeg" ? "FFMPEG_PATH" : "FFPROBE_PATH"],
-    path.join(path.dirname(process.execPath), command === "ffmpeg" ? executableName("ffmpeg") : executableName("ffprobe")),
-    path.join(process.cwd(), command === "ffmpeg" ? executableName("ffmpeg") : executableName("ffprobe")),
+    path.join(path.dirname(process.execPath), executable),
+    path.join(process.cwd(), executable),
+    ...resolveBundledCommandCandidates(executable),
     command
   ].filter(Boolean) as string[];
 
@@ -298,6 +334,20 @@ function resolveCommandSync(command: string): string {
 
 function executableName(command: "ffmpeg" | "ffprobe"): string {
   return process.platform === "win32" ? `${command}.exe` : command;
+}
+
+function resolveBundledCommandCandidates(executable: string): string[] {
+  const cwd = process.cwd();
+  const platformArch = `${process.platform}-${process.arch}`;
+
+  return [
+    path.join(cwd, "bin", executable),
+    path.join(cwd, "bin", platformArch, executable),
+    path.join(cwd, "bin", process.platform, process.arch, executable),
+    path.join(cwd, "..", "bin", executable),
+    path.join(cwd, "..", "bin", platformArch, executable),
+    path.join(cwd, "..", "bin", process.platform, process.arch, executable)
+  ];
 }
 
 function escapeForConcat(filePath: string): string {

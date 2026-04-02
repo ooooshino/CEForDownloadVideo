@@ -39,6 +39,33 @@ jobs:
           Copy-Item "C:\ProgramData\chocolatey\bin\ffmpeg.exe" "release-win\ffmpeg.exe"
           Copy-Item "C:\ProgramData\chocolatey\bin\ffprobe.exe" "release-win\ffprobe.exe"
 
+      - name: Verify packaged server health
+        working-directory: local-server
+        run: |
+          $proc = Start-Process -FilePath ".\release-win\VideoExportLocalServer.exe" -WorkingDirectory ".\release-win" -PassThru
+          try {
+            $health = $null
+            for ($i = 0; $i -lt 20; $i++) {
+              Start-Sleep -Seconds 1
+              try {
+                $health = Invoke-RestMethod "http://127.0.0.1:37891/health"
+                break
+              } catch {
+              }
+            }
+
+            if (-not $health) {
+              throw "Local server failed to start or /health did not respond"
+            }
+            if (-not $health.ffmpeg -or -not $health.ffprobe) {
+              throw "Packaged server is missing ffmpeg or ffprobe: $($health | ConvertTo-Json -Compress)"
+            }
+          } finally {
+            if ($proc -and -not $proc.HasExited) {
+              Stop-Process -Id $proc.Id -Force
+            }
+          }
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
