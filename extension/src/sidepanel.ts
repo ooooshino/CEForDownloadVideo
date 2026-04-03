@@ -14,6 +14,7 @@ const selectAllButton = must<HTMLButtonElement>("#select-all-btn");
 const invertButton = must<HTMLButtonElement>("#invert-btn");
 const statusText = must<HTMLParagraphElement>("#status-text");
 const resultList = must<HTMLDivElement>("#result-list");
+const coverFileName = must<HTMLSpanElement>("#cover-file-name");
 
 let currentTabId: number | null = null;
 let currentState: TabVideoState | null = null;
@@ -32,9 +33,11 @@ async function bootstrap(): Promise<void> {
   refreshButton.addEventListener("click", () => void refreshVideos());
   selectAllButton.addEventListener("click", handleSelectAll);
   invertButton.addEventListener("click", handleInvertSelection);
+  coverInput.addEventListener("change", syncCoverFileName);
 
   currentTabId = await getCurrentTabId();
   await Promise.all([loadHealth(), loadVideos()]);
+  syncCoverFileName();
   startAutoRefresh();
 }
 
@@ -111,19 +114,19 @@ async function loadHealth(): Promise<void> {
       throw new Error(`HTTP ${response.status}`);
     }
     const data = (await response.json()) as { ok: boolean; ffmpeg: boolean; ffprobe: boolean };
-    healthBadge.textContent = data.ok ? "OK" : "Error";
+    healthBadge.textContent = data.ok ? "READY" : "ERROR";
     healthBadge.className = `badge ${data.ok ? "ok" : "error"}`;
 
     if (data.ffmpeg && data.ffprobe) {
-      healthText.textContent = "Local server, ffmpeg, and ffprobe are ready.";
+      healthText.textContent = "本地服务与转码工具已就绪。";
     } else {
       const missing = [data.ffmpeg ? null : "ffmpeg", data.ffprobe ? null : "ffprobe"].filter(Boolean);
-      healthText.textContent = `Local server is running, but missing ${missing.join(" / ")}.`;
+      healthText.textContent = `本地服务已启动，但缺少 ${missing.join(" / ")}。`;
     }
   } catch (error) {
-    healthBadge.textContent = "Offline";
+    healthBadge.textContent = "OFFLINE";
     healthBadge.className = "badge error";
-    healthText.textContent = `Cannot connect to local server: ${toErrorMessage(error)}`;
+    healthText.textContent = `无法连接本地服务：${toErrorMessage(error)}`;
   }
 }
 async function handleExport(): Promise<void> {
@@ -489,6 +492,11 @@ function renderResults(results: ExportResultItem[]): void {
     `;
     resultList.appendChild(element);
   }
+}
+
+function syncCoverFileName(): void {
+  const file = coverInput.files?.[0];
+  coverFileName.textContent = file?.name || "未选择文件";
 }
 
 function setStatus(text: string): void {
