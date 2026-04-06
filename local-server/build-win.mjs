@@ -64,6 +64,8 @@ await writeFile(
   [
     "双击“Start-Local-Video-Server.bat”即可启动。",
     "如果浏览器插件已经装好，启动后就能直接导出。",
+    "下载默认走 Clash HTTP 代理 127.0.0.1:7890。",
+    "可通过 VIDEO_EXPORT_PROXY_ENABLED / VIDEO_EXPORT_PROXY_HOST / VIDEO_EXPORT_PROXY_PORT 调整代理配置。",
     "命令查找顺序：FFMPEG_PATH / FFPROBE_PATH -> exe 同目录 -> local-server/bin -> 系统 PATH。",
     "如果你把 ffmpeg.exe 和 ffprobe.exe 放到 local-server/bin/win32-x64/，打包时会自动复制到 release-win。",
     "如果 release-win 里还没有这两个文件，也可以手动复制进去。",
