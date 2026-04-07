@@ -1,16 +1,35 @@
-# Chrome 视频导出 MVP
+# Chrome 视频导出插件
 
-这是一个最小可运行项目，分成两部分：
+这是一个分成两部分的项目：
 
-- `extension/`：Chrome Manifest V3 插件，负责在页面里找视频、在 side panel 展示列表、把导出任务发给本地服务。
-- `local-server/`：本地 Node.js 服务，负责下载源视频、调用系统里的 ffmpeg 处理、把结果输出到本地目录。
+- `extension/`：Chrome 插件。它会在支持的网站里找视频，在 side panel 里给你看列表，并把导出任务发给本地服务。
+- `local-server/`：本地服务。它负责下载源视频、处理图片片头、裁剪片段、输出最终文件。
 
-## 目录结构
+当前仓库已经不只是最初的 MVP 了，包含了后面陆续补上的站点适配、导出规则、Windows 打包流程和新的 side panel 界面。
+
+英文版说明见 [README_EN.md](/Users/kent/Desktop/projects/chrome/downloadVideo/README_EN.md)。
+
+## 当前支持的网站
+
+- `https://www.xfree.com/*`
+- `https://fyptt.to/*`
+- `https://www.redgifs.com/*`
+
+说明：
+
+- `xfree` 走通用页面检测。
+- `fyptt` 走详情页专用解析。
+- `redgifs` 走专用列表同步和详情解析，不跟别的站混用逻辑。
+
+## 项目结构
 
 ```text
 downloadVideo/
-├── .gitignore
+├── .github/
+│   └── workflows/
+│       └── build-local-server-win.yml
 ├── README.md
+├── README_EN.md
 ├── extension/
 │   ├── build.mjs
 │   ├── manifest.json
@@ -25,41 +44,35 @@ downloadVideo/
 │   │   ├── types.ts
 │   │   ├── utils.ts
 │   │   └── icons/
-│   │       ├── icon16.png
-│   │       ├── icon32.png
-│   │       ├── icon48.png
-│   │       └── icon128.png
 │   └── dist/
 └── local-server/
+    ├── build-executable.mjs
+    ├── build-win.mjs
     ├── package.json
     ├── tsconfig.json
     ├── src/
-    │   ├── config.ts
-    │   ├── index.ts
-    │   ├── routes/
-    │   │   └── export.ts
-    │   ├── services/
-    │   │   ├── downloader.ts
-    │   │   └── ffmpeg.ts
-    │   ├── types.ts
-    │   └── utils/
-    │       ├── files.ts
-    │       └── logger.ts
-    ├── output/
-    ├── tmp/
-    └── dist/
+    ├── dist/
+    └── bin/
 ```
 
 ## 环境要求
+
+### 日常开发
 
 - macOS
 - Node.js 20+
 - Google Chrome
 - 系统已安装 `ffmpeg` 和 `ffprobe`
 
-## 先安装 ffmpeg
+### 给 Windows 朋友使用
 
-如果你本机还没有 ffmpeg，先执行：
+- 不需要安装 Node
+- 可以通过 GitHub Actions 打包出 Windows 可执行版本
+- 现在这条流程会把 `ffmpeg` 和 `ffprobe` 一起打进去
+
+## 安装 ffmpeg
+
+如果你本机还没有：
 
 ```bash
 brew install ffmpeg
@@ -74,8 +87,6 @@ ffprobe -version
 
 ## 安装依赖
 
-分别安装两个子项目依赖：
-
 ```bash
 cd extension && npm install
 cd ../local-server && npm install
@@ -88,7 +99,7 @@ cd extension
 npm run build
 ```
 
-构建完成后，Chrome 要加载的是：
+Chrome 里加载的是：
 
 ```text
 extension/dist
@@ -103,7 +114,7 @@ cd local-server
 npm run dev
 ```
 
-生产构建：
+生产模式：
 
 ```bash
 cd local-server
@@ -111,7 +122,7 @@ npm run build
 npm start
 ```
 
-默认地址固定为：
+默认地址：
 
 ```text
 http://127.0.0.1:37891
@@ -123,65 +134,63 @@ http://127.0.0.1:37891
 curl http://127.0.0.1:37891/health
 ```
 
-## 加载 Chrome 扩展
+## 加载扩展
 
-1. 打开 Chrome。
-2. 进入 `chrome://extensions`。
-3. 打开右上角“开发者模式”。
-4. 点击“加载已解压的扩展程序”。
-5. 选择 `extension/dist` 目录。
-6. 把扩展固定到工具栏，点击扩展图标即可打开 side panel。
+1. 打开 `chrome://extensions`
+2. 打开右上角“开发者模式”
+3. 点击“加载已解压的扩展程序”
+4. 选择 `extension/dist`
+5. 把扩展固定到工具栏
+6. 点击扩展图标打开 side panel
 
-## 使用说明
+## 使用方法
 
-1. 先启动本地服务。
-2. 打开以下任一页面：
-   - `https://www.xfree.com/*`
-   - `https://fyptt.to/*`
-   - `https://www.redgifs.com/*`
-3. 点击扩展图标，打开 side panel。
-4. side panel 会显示当前标签页采集到的视频列表。
-5. 如果页面是后加载内容，点“刷新检测”。
-6. 勾选要导出的 mp4。
-7. 上传一张图片。
-8. 输入开始秒数和结束秒数，比如 `0` 到 `8`。
-   - 如果结束秒数超过视频总时长，会自动裁到视频结尾。
-   - 如果结束秒数小于等于开始秒数，会提示你修改。
-   - 如果开始秒数已经超过视频总时长，也会提示你修改。
-9. 点击“导出”。
-10. 处理完成后，结果会显示在 side panel，下方会列出成功或失败。
-11. 输出文件统一写到本机 `~/Downloads/cutVideo/`。
+1. 先启动本地服务
+2. 打开支持的网站页面
+3. 打开 side panel
+4. 等插件检测视频，必要时点“刷新检测”
+5. 勾选要导出的项目
+6. 上传一张图片
+7. 填开始秒数和结束秒数，比如 `0` 和 `8`
+8. 点击“导出”
+9. 等待结果出现在 side panel 下方
 
-## 这套方案为什么这样分工
+输出目录固定为：
 
-### 为什么用 content script + service worker + side panel
+```text
+~/Downloads/cutVideo/
+```
 
-- 页面里的真实视频信息最容易在 content script 里拿到，因为它能直接看到 `video` 元素和 `currentSrc`。
-- side panel 负责界面和用户操作，不直接碰页面 DOM，这样结构更稳。
-- service worker 负责按 tab 缓存数据，把页面采集结果转给 side panel，符合 MV3 的常见做法。
+## 当前导出规则
 
-### 为什么重型处理放到本地服务
+- 现在不是“导出总时长”，而是“按开始秒数和结束秒数裁一段”
+- 上传的图片会放在视频最前面，作为一个很短的开头画面
+- 原视频如果本来就是竖版，导出仍然是竖版
+- 原视频如果是横版，会裁成竖版后再导出
+- 最终输出统一是竖版 mp4
 
-- 浏览器扩展不适合做重型转码。
-- ffmpeg.wasm 在大文件、长视频场景下更吃内存，也更慢。
-- 本地服务调用系统 ffmpeg，稳定性和性能都更适合这个 MVP。
+### 裁剪规则
 
-### 为什么同时用 4 种采集方式
+- 开始秒数小于视频总时长，结束秒数也小于总时长：正常裁剪
+- 开始秒数小于视频总时长，结束秒数大于总时长：自动裁到视频结尾
+- 结束秒数小于等于开始秒数：直接提示
+- 开始秒数大于或等于视频总时长：直接提示
 
-- DOM 扫描：抓页面初始就存在的视频。
-- MutationObserver：抓后续动态插入的视频。
-- performance：补充浏览器已经请求过但不一定挂在 DOM 上的资源。
-- webRequest：补充网络层直接出现的 mp4 地址。
+## side panel 现在的样子
 
-这样做不是为了复杂，而是为了尽量把不同站点的常见情况都兜住。
+- 使用 side panel，不用 popup
+- 视频区是竖版卡片流
+- hover 时预览播放
+- 同一时间只保留一个在播
+- 顶部区域固定，不跟着滚动
+- 自动每 5 秒刷新一次
+- 界面已经改成新的一套黑色风格
 
 ## 本地服务接口
 
 ### `GET /health`
 
-返回服务和 ffmpeg 状态。
-
-示例：
+返回服务和转码工具状态：
 
 ```json
 {
@@ -193,7 +202,7 @@ curl http://127.0.0.1:37891/health
 
 ### `POST /export`
 
-使用 `multipart/form-data`：
+表单字段：
 
 - `cover`: 图片文件
 - `startTime`: 开始秒数
@@ -212,65 +221,92 @@ curl -X POST http://127.0.0.1:37891/export \
   -F 'videos=["https://example.com/video.mp4"]'
 ```
 
-## ffmpeg 处理规则
+## Windows 打包
 
-当前实现走“稳定优先”：
+仓库里已经带了 GitHub Actions 流程：
 
-1. 先把上传图片做成一个很短的开头画面，不再停 1 秒。
-2. 再从原视频里按开始秒数到结束秒数裁出你要的片段。
-3. 原视频不管横竖，最终都统一成竖版；横版会从中间裁成竖版。
-4. 最后把开头画面和裁出来的视频接起来。
-5. 输出统一为 H.264 + AAC 的 mp4。
+- `Build Windows Local Server`
 
-代码里实际调用的 ffmpeg 思路就是这三步：
+它会做这些事：
 
-- 生成图片片头
-- 统一原视频格式
-- 拼接并补足/截断到目标秒数
+- 安装依赖
+- 安装 `ffmpeg`
+- 打包 Windows 版本地服务
+- 把 `ffmpeg.exe` 和 `ffprobe.exe` 一起带上
+- 检查 `/health`
+- 生成 zip 并上传到构建产物
+
+拿 Windows 包的方式：
+
+1. 打开仓库的 `Actions`
+2. 运行 `Build Windows Local Server`
+3. 等它完成
+4. 在运行详情页底部下载 `VideoExportLocalServer-win-x64`
+
+解压后，发给朋友的就是那一套文件。
+
+## 这套分工为什么这么做
+
+### 为什么页面检测放在 content script
+
+因为它最接近真实页面，能直接看到浏览器已经解析出来的视频信息。
+
+### 为什么要有 service worker
+
+因为 side panel 不能直接碰页面内容，需要一个中间层按标签页缓存和转发数据。
+
+### 为什么重处理放在本地服务
+
+因为浏览器里做大视频处理又慢又不稳，本地服务调用系统 ffmpeg 更实用。
+
+### 为什么不只靠一种检测方式
+
+因为不同网站藏视频的方式不一样：
+
+- 有的直接在页面里
+- 有的是后面动态插进去
+- 有的是浏览器资源里已经出现了，但页面上看不到
+- 有的是列表页和详情页完全两套结构
+
+所以现在是按网站拆逻辑，不再强行一套通吃。
+
+## 已知限制
+
+- 当前真正支持导出的还是 `mp4`
+- `m3u8`、`blob`、`dash` 会出现在列表里，但还不能直接导出
+- `redgifs`、`fyptt`、`xfree` 都是单独适配的，后面新增站点也建议继续按站点拆开做
+- `xxxtik` 已经确认“有机会接进来”，但目前还没正式加进支持列表
 
 ## 常见问题
 
-### side panel 显示“未连接”
+### side panel 显示连不上本地服务
 
-- 确认本地服务已经启动。
-- 确认端口还是 `37891`。
-- 打开 `http://127.0.0.1:37891/health` 看是否能访问。
+- 确认本地服务已经启动
+- 确认端口还是 `37891`
+- 打开 `http://127.0.0.1:37891/health` 看能不能访问
 
-### 健康检查说 ffmpeg 不可用
+### 健康检查说缺少 ffmpeg
 
-- 确认你装了 `ffmpeg` 和 `ffprobe`。
-- 如果是用 Homebrew 安装，重开一次终端再启动服务。
+- 确认本机装了 `ffmpeg` 和 `ffprobe`
+- 如果刚装完，重开终端再启动服务
 
-### 列表里看到 m3u8、blob、dash，但不能导出
+### 为什么列表里有些项目不能导出
 
-- 这是当前 MVP 的已知范围限制。
-- 列表会保留这些资源，方便后面继续扩展。
-- 当前真正支持导出的只有 mp4。
+- 因为当前只正式支持 `mp4`
+- 其他类型先保留在列表里，方便后续继续扩展
 
-### 某个视频失败，为什么其他视频还能继续
+### 为什么某个视频失败了，其他视频还在继续
 
-- 服务端按单条分别处理。
-- 单条失败会记到结果里，但不会让整批都中断。
+- 因为服务端是逐条处理
+- 单条失败不会把整批一起打断
 
-### 为什么没有直接在浏览器里转码
+### Redgifs 之前为什么最多只显示一百多个
 
-- 为了稳定和可用性。
-- 大文件转码放在本地 ffmpeg 更靠谱。
+- 之前代码里确实有写死上限
+- 现在这个限制已经去掉了
 
 ## 开发建议
 
-扩展开发时，如果你改了 `extension/src` 下的文件，重新执行：
-
-```bash
-cd extension
-npm run build
-```
-
-然后去 `chrome://extensions` 点击“重新加载”。
-
-本地服务开发时，执行：
-
-```bash
-cd local-server
-npm run dev
-```
+- 新增站点时，不要把所有站点揉成一套逻辑
+- 优先按“站点专用检测 + 通用兜底”来做
+- 测试导出后，记得清掉测试产物，避免误提交
