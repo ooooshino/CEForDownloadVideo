@@ -7,7 +7,7 @@
 
 当前仓库已经不只是最初的 MVP 了，包含了后面陆续补上的站点适配、导出规则、Windows 打包流程和新的 side panel 界面。
 
-英文版说明见 [README_EN.md](/Users/kent/Desktop/projects/chrome/downloadVideo/README_EN.md)。
+英文版说明见 [README_EN.md](./README_EN.md)。
 
 ## 当前支持的网站
 

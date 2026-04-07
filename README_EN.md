@@ -7,7 +7,7 @@ This project has two parts:
 
 This repository is no longer just the initial MVP. It already includes site-specific detection logic, updated export rules, a redesigned side panel, and a Windows packaging workflow.
 
-Chinese documentation: [README.md](/Users/kent/Desktop/projects/chrome/downloadVideo/README.md)
+Chinese documentation: [README.md](./README.md)
 
 ## Currently supported sites
 
