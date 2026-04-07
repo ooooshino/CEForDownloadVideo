@@ -194,7 +194,7 @@ async function syncRedgifsExploreItems(
 async function resolveRedgifsExploreItems(
   items: Array<{ id: string; pageLink: string }>
 ): Promise<VideoCandidate[]> {
-  const uniqueItems = dedupeRedgifsItems(items).slice(0, 120);
+  const uniqueItems = dedupeRedgifsItems(items);
   if (uniqueItems.length === 0) {
     return [];
   }
