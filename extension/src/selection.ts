@@ -46,6 +46,7 @@ let covers: CoverUiState[] = [];
 let isExporting = false;
 
 const SERVER_BATCH_CONCURRENCY = 5;
+const LEGACY_EXPORT_CONCURRENCY = 3;
 const DEFAULT_START_TIME = 0;
 const DEFAULT_END_TIME = 8;
 
@@ -506,6 +507,39 @@ async function handleExport(): Promise<void> {
 }
 
 async function exportBatchTasks(input: BatchSubmitInput): Promise<FrozenBatchResult[]> {
+  try {
+    return await requestBatchExport(input);
+  } catch (error) {
+    if (shouldFallbackToLegacy(error)) {
+      setStatus("本地服务暂不支持批量接口，已自动切换兼容导出模式…");
+      return runWithConcurrency(input.tasks, LEGACY_EXPORT_CONCURRENCY, async (task) => {
+        const cover = input.coversByStorageKey.get(task.coverStorageKey);
+        if (!cover?.file) {
+          return {
+            taskId: task.taskId,
+            videoIndex: task.videoIndex,
+            coverIndex: task.coverIndex,
+            src: task.videoSrc,
+            success: false,
+            error: `缺少封面文件: cover-${task.coverIndex}`
+          } satisfies FrozenBatchResult;
+        }
+        return exportLegacySingleTask(task, cover.file, input.pageUrl, input.startTime, input.endTime);
+      });
+    }
+
+    return input.tasks.map((task) => ({
+      taskId: task.taskId,
+      videoIndex: task.videoIndex,
+      coverIndex: task.coverIndex,
+      src: task.videoSrc,
+      success: false,
+      error: formatBatchError(error)
+    }));
+  }
+}
+
+async function requestBatchExport(input: BatchSubmitInput): Promise<FrozenBatchResult[]> {
   const formData = new FormData();
   formData.append("startTime", String(input.startTime));
   formData.append("endTime", String(input.endTime));
@@ -530,33 +564,121 @@ async function exportBatchTasks(input: BatchSubmitInput): Promise<FrozenBatchRes
   }));
   formData.append("tasks", JSON.stringify(normalizedTasks));
 
+  const response = await fetch(`${LOCAL_SERVER_BASE_URL}/export/batch`, {
+    method: "POST",
+    body: formData
+  });
+
+  const text = await response.text();
+  const payload = parseJsonSafely(text) as { ok?: boolean; results?: FrozenBatchResult[]; error?: string } | null;
+  if (!response.ok) {
+    const detail = payload?.error || summarizeResponseText(text) || `HTTP ${response.status}`;
+    if (response.status === 404 || response.status === 405) {
+      throw new Error(`BATCH_UNSUPPORTED:${detail}`);
+    }
+    throw new Error(`批量接口失败（HTTP ${response.status}）：${detail}`);
+  }
+  if (!payload?.ok) {
+    throw new Error(payload?.error || "批量接口返回失败");
+  }
+  if (!Array.isArray(payload.results)) {
+    throw new Error("批量接口未返回 results");
+  }
+  return payload.results;
+}
+
+async function exportLegacySingleTask(
+  task: FrozenExportTask,
+  coverFile: File,
+  pageUrl: string,
+  startTime: number,
+  endTime: number
+): Promise<FrozenBatchResult> {
   try {
-    const response = await fetch(`${LOCAL_SERVER_BASE_URL}/export/batch`, {
+    const formData = new FormData();
+    formData.append("cover", coverFile);
+    formData.append("startTime", String(startTime));
+    formData.append("endTime", String(endTime));
+    formData.append("pageUrl", pageUrl);
+    formData.append("videos", JSON.stringify([task.videoSrc]));
+
+    const response = await fetch(`${LOCAL_SERVER_BASE_URL}/export`, {
       method: "POST",
       body: formData
     });
-    const payload = (await response.json()) as {
-      ok: boolean;
-      results?: FrozenBatchResult[];
+    const text = await response.text();
+    const payload = parseJsonSafely(text) as {
+      ok?: boolean;
+      results?: Array<{ src: string; success: boolean; outputPath?: string; error?: string }>;
       error?: string;
+    } | null;
+
+    if (!response.ok || !payload?.ok) {
+      throw new Error(payload?.error || summarizeResponseText(text) || `HTTP ${response.status}`);
+    }
+    const item = payload.results?.[0];
+    if (!item) {
+      throw new Error("旧接口未返回任务结果");
+    }
+
+    return {
+      taskId: task.taskId,
+      videoIndex: task.videoIndex,
+      coverIndex: task.coverIndex,
+      src: item.src || task.videoSrc,
+      success: item.success,
+      outputPath: item.outputPath,
+      error: item.error
     };
-    if (!response.ok || !payload.ok) {
-      throw new Error(payload.error || `HTTP ${response.status}`);
-    }
-    if (!Array.isArray(payload.results)) {
-      throw new Error("服务端没有返回批量结果");
-    }
-    return payload.results;
   } catch (error) {
-    return input.tasks.map((task) => ({
+    return {
       taskId: task.taskId,
       videoIndex: task.videoIndex,
       coverIndex: task.coverIndex,
       src: task.videoSrc,
       success: false,
-      error: toErrorMessage(error)
-    }));
+      error: `兼容模式失败：${toErrorMessage(error)}`
+    };
   }
+}
+
+function shouldFallbackToLegacy(error: unknown): boolean {
+  const message = toErrorMessage(error);
+  return message.startsWith("BATCH_UNSUPPORTED:");
+}
+
+function formatBatchError(error: unknown): string {
+  const message = toErrorMessage(error);
+  if (message.startsWith("BATCH_UNSUPPORTED:")) {
+    return message.replace("BATCH_UNSUPPORTED:", "批量接口不支持：");
+  }
+  return message;
+}
+
+async function runWithConcurrency<T, R>(
+  items: readonly T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  if (items.length === 0) {
+    return [];
+  }
+
+  const limit = Math.max(1, Math.floor(concurrency));
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+
+  const runWorker = async (): Promise<void> => {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      results[currentIndex] = await worker(items[currentIndex] as T, currentIndex);
+    }
+  };
+
+  const workers = Array.from({ length: Math.min(limit, items.length) }, () => runWorker());
+  await Promise.all(workers);
+  return results;
 }
 
 function renderBatchResults(results: FrozenBatchResult[]): void {
@@ -628,6 +750,21 @@ function buildExportStatusMessage(input: {
 
 function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function parseJsonSafely(raw: string): unknown {
+  try {
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function summarizeResponseText(raw: string): string {
+  if (!raw) {
+    return "";
+  }
+  return raw.replace(/\s+/g, " ").trim().slice(0, 180);
 }
 
 function must<T extends Element>(selector: string): T {
