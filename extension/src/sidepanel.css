@@ -48,6 +48,8 @@ body {
   position: sticky;
   top: 0;
   z-index: 20;
+  display: grid;
+  gap: 10px;
 }
 
 .panel {
@@ -79,6 +81,16 @@ body {
   align-items: flex-start;
   gap: 18px;
   padding-bottom: 18px;
+}
+
+.selection-toolbar {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+.selection-row {
+  justify-content: flex-start;
+  flex-wrap: wrap;
 }
 
 .top-actions {

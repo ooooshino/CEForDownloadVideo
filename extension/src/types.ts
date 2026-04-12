@@ -28,3 +28,44 @@ export interface ExportResultItem {
   outputPath?: string;
   error?: string;
 }
+
+export interface FrozenCoverDraft {
+  id: string;
+  index: number;
+  name: string;
+  storageKey: string;
+  from: number;
+  to: number;
+}
+
+export interface FrozenCoverAssignment {
+  coverId: string;
+  coverIndex: number;
+  from: number;
+  to: number;
+}
+
+export interface FrozenExportTask {
+  taskId: string;
+  videoIndex: number;
+  videoSrc: string;
+  coverIndex: number;
+  coverStorageKey: string;
+}
+
+export interface FrozenBatchResult {
+  taskId: string;
+  videoIndex: number;
+  coverIndex: number;
+  src: string;
+  success: boolean;
+  outputPath?: string;
+  error?: string;
+}
+
+export interface FrozenSelectionSnapshot {
+  pageUrl: string;
+  pageTitle: string;
+  createdAt: number;
+  videos: VideoCandidate[];
+}

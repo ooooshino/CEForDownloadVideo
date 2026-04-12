@@ -13,7 +13,8 @@ await build({
   entryPoints: {
     "content-script": path.join(__dirname, "src/content-script.ts"),
     "service-worker": path.join(__dirname, "src/service-worker.ts"),
-    "sidepanel": path.join(__dirname, "src/sidepanel.ts")
+    "sidepanel": path.join(__dirname, "src/sidepanel.ts"),
+    "selection": path.join(__dirname, "src/selection.ts")
   },
   bundle: true,
   format: "esm",
@@ -27,8 +28,9 @@ await Promise.all([
   cp(path.join(__dirname, "manifest.json"), path.join(outdir, "manifest.json")),
   cp(path.join(__dirname, "src/sidepanel.html"), path.join(outdir, "sidepanel.html")),
   cp(path.join(__dirname, "src/sidepanel.css"), path.join(outdir, "sidepanel.css")),
+  cp(path.join(__dirname, "src/selection.html"), path.join(outdir, "selection.html")),
+  cp(path.join(__dirname, "src/selection.css"), path.join(outdir, "selection.css")),
   cp(path.join(__dirname, "src/icons"), path.join(outdir, "icons"), { recursive: true })
 ]);
 
 console.log(`Extension build complete: ${outdir}`);
-

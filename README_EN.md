@@ -120,6 +120,18 @@ Default server URL:
 http://127.0.0.1:37891
 ```
 
+Optional batch concurrency config:
+
+```bash
+VIDEO_EXPORT_BATCH_CONCURRENCY=5 npm start
+```
+
+Notes:
+
+- Default is `5`
+- If the env var is not provided, the default is used
+- You can tune it by machine capacity, e.g. `3`, `5`, or `8`
+
 Health check:
 
 ```bash
@@ -146,6 +158,24 @@ curl http://127.0.0.1:37891/health
 7. Enter a start and end time, such as `0` and `8`
 8. Click export
 9. Wait for the results to appear in the result section
+
+## Multi-cover frozen batch flow (new)
+
+For multi-cover planning and overlap-based export, use the frozen flow:
+
+1. Select videos in side panel and click `锁定已选`
+2. You will enter the standalone `selection` page
+3. Upload multiple covers
+4. Use auto distribution or manually edit each cover `from/to`
+5. Overlaps are supported (one video can map to multiple covers)
+6. Set start/end time and run batch export
+7. Check per-task results (success/failure/output path)
+
+Behavior:
+
+- Side panel refresh does not clear frozen data
+- Data is reset only by manual clear or re-freeze
+- Same source video with different covers produces separate outputs
 
 Output directory:
 
@@ -212,6 +242,27 @@ curl -X POST http://127.0.0.1:37891/export \
   -F "pageUrl=https://www.redgifs.com/watch/demo" \
   -F 'videos=["https://example.com/video.mp4"]'
 ```
+
+### `POST /export/batch`
+
+Used by the multi-cover batch workflow. Form fields:
+
+- `startTime`: trim start
+- `endTime`: trim end
+- `pageUrl`: current page URL
+- `cover-{n}`: multiple uploaded cover files (e.g. `cover-1`, `cover-2`)
+- `tasks`: JSON string array. Each task includes:
+  - `taskId`
+  - `videoIndex`
+  - `videoSrc`
+  - `coverIndex`
+  - `coverUploadField` (e.g. `cover-1`)
+
+Server behavior:
+
+- Worker-pool execution, default concurrency `5`
+- One task failure does not abort the whole batch
+- Output filenames include `video-{n}` and `cover-{n}` to avoid collisions
 
 ## Windows packaging
 

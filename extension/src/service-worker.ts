@@ -1,4 +1,5 @@
 import type { TabVideoState, VideoCandidate } from "./types";
+import { resolveRefreshFailureState } from "./service-worker-refresh";
 import { LOCAL_SERVER_BASE_URL, makeCandidate, mergeCandidates } from "./utils";
 
 // MV3 的 service worker 负责跨页面和 side panel 的中转与缓存，
@@ -140,7 +141,11 @@ async function getTabState(tabId: number): Promise<TabVideoState | null> {
 
   if (isRedgifsExploreUrl(tab.url)) {
     ensureTabContext(tabId, tab.url, tab.title || "");
-    await chrome.tabs.sendMessage(tabId, { type: "REFRESH_VIDEO_DISCOVERY" });
+    try {
+      await chrome.tabs.sendMessage(tabId, { type: "REFRESH_VIDEO_DISCOVERY" });
+    } catch (error) {
+      return resolveRefreshFailureState(tabStateMap.get(tabId), error);
+    }
     await delay(700);
     return tabStateMap.get(tabId) ?? null;
   }
@@ -158,12 +163,20 @@ async function triggerContentRefresh(tabId: number, force: boolean): Promise<Tab
         existing.updatedAt = 0;
       }
     }
-    await chrome.tabs.sendMessage(tabId, { type: "REFRESH_VIDEO_DISCOVERY" });
+    try {
+      await chrome.tabs.sendMessage(tabId, { type: "REFRESH_VIDEO_DISCOVERY" });
+    } catch (error) {
+      return resolveRefreshFailureState(tabStateMap.get(tabId), error);
+    }
     await delay(700);
     return tabStateMap.get(tabId) ?? null;
   }
 
-  await chrome.tabs.sendMessage(tabId, { type: "REFRESH_VIDEO_DISCOVERY" });
+  try {
+    await chrome.tabs.sendMessage(tabId, { type: "REFRESH_VIDEO_DISCOVERY" });
+  } catch (error) {
+    return resolveRefreshFailureState(tabStateMap.get(tabId), error);
+  }
   await delay(350);
   return tabStateMap.get(tabId) ?? null;
 }

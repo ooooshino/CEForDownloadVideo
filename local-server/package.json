@@ -7,6 +7,7 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
+    "test:batch": "tsx --test src/services/batch-export.test.ts src/routes/export-batch-parse.test.ts",
     "build:desktop": "node build-executable.mjs",
     "build:win": "node build-win.mjs"
   },

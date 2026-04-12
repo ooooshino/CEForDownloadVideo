@@ -26,6 +26,13 @@
             <button id="refresh-btn" class="button secondary" type="button">刷新检测</button>
           </div>
         </header>
+        <div class="selection-toolbar panel surface">
+          <div class="row selection-row">
+            <button id="select-all-btn" class="button secondary small" type="button">全选</button>
+            <button id="invert-btn" class="button secondary small" type="button">反选</button>
+            <button id="freeze-btn" class="button secondary small" type="button">锁定已选</button>
+          </div>
+        </div>
       </div>
 
       <section class="panel surface">
@@ -34,10 +41,6 @@
             <span class="eyebrow">DETECTED FEED</span>
             <strong class="section-title">视频列表</strong>
             <p id="health-text" class="muted inline-status">正在检查本地服务状态</p>
-          </div>
-          <div class="row">
-            <button id="select-all-btn" class="button secondary small" type="button">全选</button>
-            <button id="invert-btn" class="button secondary small" type="button">反选</button>
           </div>
         </div>
         <div id="video-list" class="video-list"></div>

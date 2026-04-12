@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Frozen Selection</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Doto:wght@400;500;600&family=Space+Grotesk:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./selection.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="panel surface hero">
+        <div class="stack">
+          <span class="eyebrow">LOCKED SELECTION</span>
+          <h1>FROZEN<br />QUEUE</h1>
+          <p id="snapshot-meta" class="muted hero-meta">还没有锁定内容</p>
+        </div>
+        <div class="hero-actions">
+          <button id="back-btn" class="button secondary" type="button">返回继续看侧栏</button>
+          <button id="clear-btn" class="button danger" type="button">手动清空</button>
+        </div>
+      </header>
+
+      <section class="panel surface">
+        <div class="section-head">
+          <div class="stack tight">
+            <span class="eyebrow">LOCKED ITEMS</span>
+            <strong class="section-title">已锁定视频队列</strong>
+            <p id="selection-hint" class="muted">这里的数据只会在你手动清空或重新锁定时变化。</p>
+          </div>
+          <span id="selection-count" class="badge pending">0 ITEMS</span>
+        </div>
+        <div id="selection-list" class="video-list"></div>
+      </section>
+
+      <section class="panel surface">
+        <div class="section-head">
+          <div class="stack tight">
+            <span class="eyebrow">COVER EDITOR</span>
+            <strong class="section-title">封面分配编辑器</strong>
+            <p class="muted">上传多个封面后，可以自动分配，也可以按视频序号手动调整范围。</p>
+          </div>
+          <div class="editor-actions">
+            <button id="auto-distribute-btn" class="button secondary" type="button">自动分配范围</button>
+            <button id="add-cover-btn" class="button primary" type="button">新增封面</button>
+          </div>
+        </div>
+        <div id="cover-list" class="cover-list"></div>
+      </section>
+
+      <section class="panel surface">
+        <div class="section-head">
+          <div class="stack tight">
+            <span class="eyebrow">TASK SUMMARY</span>
+            <strong class="section-title">任务概览</strong>
+            <p class="muted">这里会显示校验结果、覆盖情况和展开后的批量任务数。</p>
+          </div>
+          <span id="task-count" class="badge pending">0 TASKS</span>
+        </div>
+        <div id="task-summary" class="summary-grid"></div>
+        <div class="time-range-toolbar">
+          <label class="field compact">
+            <span class="field-label">开始秒数</span>
+            <input id="start-time-input" class="input" type="number" min="0" step="0.1" value="0" />
+          </label>
+          <label class="field compact">
+            <span class="field-label">结束秒数</span>
+            <input id="end-time-input" class="input" type="number" min="0.1" step="0.1" value="8" />
+          </label>
+        </div>
+        <div class="export-toolbar">
+          <button id="export-btn" class="button primary" type="button">开始批量导出</button>
+          <p id="status-text" class="muted status-line"></p>
+        </div>
+      </section>
+
+      <section class="panel surface">
+        <div class="section-head">
+          <div class="stack tight">
+            <span class="eyebrow">TASK PREVIEW</span>
+            <strong class="section-title">展开后的任务预览</strong>
+            <p class="muted">重叠范围会在这里展开成多条独立任务。</p>
+          </div>
+        </div>
+        <div id="task-preview-list" class="task-preview-list"></div>
+      </section>
+
+      <section class="panel surface">
+        <div class="section-head">
+          <div class="stack tight">
+            <span class="eyebrow">BATCH LOG</span>
+            <strong class="section-title">批量结果</strong>
+          </div>
+        </div>
+        <div id="result-list" class="result-list empty">还没有导出结果</div>
+      </section>
+    </div>
+
+    <script type="module" src="./selection.js"></script>
+  </body>
+</html>

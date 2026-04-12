@@ -16,10 +16,10 @@ export function safeBaseName(input: string): string {
   return input.replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") || "video";
 }
 
-export function buildOutputFileName(pageUrl: string, index: number): string {
+export function buildOutputFileName(pageUrl: string, index: number, coverIndex = 0): string {
   const hostname = toHostname(pageUrl);
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  return `${hostname}-${index + 1}-${stamp}.mp4`;
+  return `${hostname}-video-${index + 1}-cover-${coverIndex + 1}-${stamp}.mp4`;
 }
 
 export function createTempFilePath(jobDir: string, name: string): string {
@@ -37,4 +37,3 @@ function toHostname(url: string): string {
     return safeBaseName(os.hostname());
   }
 }
-

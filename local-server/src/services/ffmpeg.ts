@@ -14,6 +14,7 @@ export interface ProcessVideoInput {
   downloadPath: string;
   jobDir: string;
   index: number;
+  coverIndex?: number;
 }
 
 interface ProbeInfo {
@@ -67,7 +68,7 @@ export async function processVideo(input: ProcessVideoInput): Promise<string> {
   const introPath = createTempFilePath(input.jobDir, "intro.mp4");
   const normalizedPath = createTempFilePath(input.jobDir, "normalized.mp4");
   const concatListPath = createTempFilePath(input.jobDir, "concat.txt");
-  const outputFilename = buildOutputFileName(input.pageUrl, input.index);
+  const outputFilename = buildOutputFileName(input.pageUrl, input.index, input.coverIndex ?? 0);
   const outputPath = getOutputPath(outputFilename);
 
   await createIntroClip(input.coverPath, introPath, introDuration, outputSize);

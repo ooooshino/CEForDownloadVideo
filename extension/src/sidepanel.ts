@@ -1,4 +1,10 @@
 import type { ExportResultItem, TabVideoState, VideoCandidate } from "./types";
+import { resolveRefreshState } from "./sidepanel-state";
+import {
+  createFrozenSelectionSnapshot,
+  FROZEN_SELECTION_DRAFT_STORAGE_KEY,
+  FROZEN_SELECTION_STORAGE_KEY
+} from "./selection-storage";
 import { LOCAL_SERVER_BASE_URL } from "./utils";
 
 const pageMeta = must<HTMLParagraphElement>("#page-meta");
@@ -12,6 +18,7 @@ const exportButton = must<HTMLButtonElement>("#export-btn");
 const refreshButton = must<HTMLButtonElement>("#refresh-btn");
 const selectAllButton = must<HTMLButtonElement>("#select-all-btn");
 const invertButton = must<HTMLButtonElement>("#invert-btn");
+const freezeButton = must<HTMLButtonElement>("#freeze-btn");
 const statusText = must<HTMLParagraphElement>("#status-text");
 const resultList = must<HTMLDivElement>("#result-list");
 const coverFileName = must<HTMLSpanElement>("#cover-file-name");
@@ -21,6 +28,7 @@ let currentState: TabVideoState | null = null;
 let selectedIds = new Set<string>();
 let refreshTimer: number | null = null;
 let isRefreshing = false;
+let isExporting = false;
 let activeVideoId: string | null = null;
 
 // side panel 只负责展示和交互，真正的 tab 数据通过 service worker 中转，
@@ -33,6 +41,7 @@ async function bootstrap(): Promise<void> {
   refreshButton.addEventListener("click", () => void refreshVideos());
   selectAllButton.addEventListener("click", handleSelectAll);
   invertButton.addEventListener("click", handleInvertSelection);
+  freezeButton.addEventListener("click", () => void handleFreezeSelection());
   coverInput.addEventListener("change", syncCoverFileName);
 
   currentTabId = await getCurrentTabId();
@@ -88,7 +97,13 @@ async function refreshVideos(options: { silent?: boolean } = {}): Promise<void> 
       throw new Error(response.error);
     }
 
-    currentState = response.data as TabVideoState | null;
+    currentState = resolveRefreshState({
+      previousState: currentState,
+      incomingState: response.data as TabVideoState | null,
+      silent: Boolean(options.silent),
+      hasPendingSelection: selectedIds.size > 0 || Boolean(coverInput.files?.[0]),
+      isExporting
+    });
     hydrateSelection(currentState?.videos ?? []);
     syncActiveVideo(currentState?.videos ?? []);
     if (!(options.silent && isPreviewActive())) {
@@ -167,6 +182,7 @@ async function handleExport(): Promise<void> {
   }
 
   exportButton.disabled = true;
+  isExporting = true;
   const willClampToEnd = exportableVideos.some(
     (item) => typeof item.duration === "number" && item.duration > 0 && endTime > item.duration
   );
@@ -195,6 +211,7 @@ async function handleExport(): Promise<void> {
   } catch (error) {
     setStatus(`导出失败：${toErrorMessage(error)}`);
   } finally {
+    isExporting = false;
     exportButton.disabled = false;
   }
 }
@@ -448,6 +465,36 @@ function handleInvertSelection(): void {
   }
   selectedIds = next;
   renderVideoList(currentState?.videos ?? []);
+}
+
+async function handleFreezeSelection(): Promise<void> {
+  const snapshot = createFrozenSelectionSnapshot(currentState, selectedIds);
+  if (!snapshot) {
+    setStatus("请至少勾选一个可导出的 mp4，再锁定。");
+    return;
+  }
+
+  const stored = await chrome.storage.local.get(FROZEN_SELECTION_STORAGE_KEY);
+  const previousSnapshot = (stored[FROZEN_SELECTION_STORAGE_KEY] as {
+    pageUrl?: string;
+    videos?: Array<{ id?: string }>;
+  } | undefined) ?? null;
+  const shouldResetDraft =
+    !previousSnapshot ||
+    previousSnapshot.pageUrl !== snapshot.pageUrl ||
+    JSON.stringify((previousSnapshot.videos ?? []).map((item) => item.id)) !==
+      JSON.stringify(snapshot.videos.map((item) => item.id));
+
+  await chrome.storage.local.set({
+    [FROZEN_SELECTION_STORAGE_KEY]: snapshot
+  });
+  if (shouldResetDraft) {
+    await chrome.storage.local.remove(FROZEN_SELECTION_DRAFT_STORAGE_KEY);
+  }
+  await chrome.tabs.create({
+    url: chrome.runtime.getURL("selection.html")
+  });
+  setStatus(`已锁定 ${snapshot.videos.length} 个视频，可在新页面继续导出。`);
 }
 
 async function getCurrentTabId(): Promise<number | null> {

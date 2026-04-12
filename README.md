@@ -128,6 +128,18 @@ npm start
 http://127.0.0.1:37891
 ```
 
+可选并发配置（批量导出）：
+
+```bash
+VIDEO_EXPORT_BATCH_CONCURRENCY=5 npm start
+```
+
+说明：
+
+- 默认值是 `5`
+- 不传环境变量就按默认值
+- 建议根据机器性能调整，比如 `3`、`5`、`8`
+
 健康检查：
 
 ```bash
@@ -154,6 +166,23 @@ curl http://127.0.0.1:37891/health
 7. 填开始秒数和结束秒数，比如 `0` 和 `8`
 8. 点击“导出”
 9. 等待结果出现在 side panel 下方
+
+## 多封面冻结导出（新流程）
+
+当你需要多个封面、重叠区间、批量任务时，建议用冻结流程：
+
+1. 在 side panel 勾选视频，点击 `锁定已选`
+2. 跳转到独立 `selection` 页面后，上传多个封面
+3. 点击“自动分配范围”或手动修改每个封面的 `from/to`
+4. 可以让一个视频命中多个封面（会展开成多条任务）
+5. 设置开始/结束秒数后执行批量导出
+6. 查看任务级结果（成功/失败、输出路径）
+
+特性说明：
+
+- side panel 刷新不会清空冻结数据
+- 只有手动点“清空”或重新锁定时才会重置
+- 同一视频 + 不同封面会生成独立输出文件
 
 输出目录固定为：
 
@@ -220,6 +249,27 @@ curl -X POST http://127.0.0.1:37891/export \
   -F "pageUrl=https://www.redgifs.com/watch/demo" \
   -F 'videos=["https://example.com/video.mp4"]'
 ```
+
+### `POST /export/batch`
+
+用于多封面批量导出。表单字段：
+
+- `startTime`: 开始秒数
+- `endTime`: 结束秒数
+- `pageUrl`: 页面 URL
+- `cover-{n}`: 多个封面文件（例如 `cover-1`、`cover-2`）
+- `tasks`: JSON 字符串数组，每项包含：
+  - `taskId`
+  - `videoIndex`
+  - `videoSrc`
+  - `coverIndex`
+  - `coverUploadField`（如 `cover-1`）
+
+服务端行为：
+
+- 并发池执行，默认并发 `5`
+- 单个任务失败不会中断整批
+- 输出命名包含 `video-{n}` 和 `cover-{n}`，避免冲突
 
 ## Windows 打包
 
