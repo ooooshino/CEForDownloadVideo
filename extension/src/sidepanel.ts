@@ -489,6 +489,8 @@ async function handleFreezeSelection(): Promise<void> {
   await chrome.tabs.create({
     url: chrome.runtime.getURL("selection.html")
   });
+  selectedIds = new Set();
+  renderVideoList(currentState?.videos ?? []);
   setStatus(
     appendResult.addedCount > 0
       ? `已追加 ${appendResult.addedCount} 个新视频，当前锁定 ${appendResult.snapshot.videos.length} 个。`

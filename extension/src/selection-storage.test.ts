@@ -72,6 +72,25 @@ function makeState(): TabVideoState {
   };
 }
 
+function makeLargeState(videoCount: number): TabVideoState {
+  return {
+    ...makeState(),
+    videos: Array.from({ length: videoCount }, (_, index) => ({
+      id: `video-${index + 1}`,
+      src: `https://cdn.example.com/video-${index + 1}.mp4`,
+      title: `Video ${index + 1}`,
+      poster: "",
+      pageLink: "",
+      duration: 12,
+      width: 720,
+      height: 1280,
+      sourceType: "network" as const,
+      exportable: true,
+      unsupportedReason: ""
+    }))
+  };
+}
+
 test("creates a frozen snapshot from the current selected exportable videos", () => {
   const snapshot = createFrozenSelectionSnapshot(makeState(), ["a", "b"]);
 
@@ -232,6 +251,29 @@ test("creates initial cover drafts in frozen snapshot order", () => {
       [2, "Cover 2", 2, 2],
       [3, "Cover 3", 3, 3]
     ]
+  );
+});
+
+test("caps initial cover drafts at ten when more videos are locked", () => {
+  const state = makeLargeState(12);
+  const snapshot = createFrozenSelectionSnapshot(
+    state,
+    state.videos.map((video) => video.id)
+  );
+
+  assert.ok(snapshot);
+
+  const drafts = createInitialCoverDrafts(snapshot);
+
+  assert.equal(drafts.length, 10);
+  assert.deepEqual(
+    drafts.map(({ index, name, from, to }) => [index, name, from, to]),
+    Array.from({ length: 10 }, (_, index) => [
+      index + 1,
+      `Cover ${index + 1}`,
+      index + 1,
+      index + 1
+    ])
   );
 });
 

@@ -2,6 +2,7 @@ import type { FrozenCoverDraft, FrozenSelectionSnapshot, TabVideoState } from ".
 
 export const FROZEN_SELECTION_STORAGE_KEY = "frozenSelectionSnapshot";
 export const FROZEN_SELECTION_DRAFT_STORAGE_KEY = "frozenSelectionDraft";
+export const DEFAULT_INITIAL_COVER_DRAFT_LIMIT = 10;
 
 export interface AppendFrozenSelectionResult {
   snapshot: FrozenSelectionSnapshot;
@@ -102,7 +103,10 @@ export function removeFrozenSelectionVideos(
 }
 
 export function createInitialCoverDrafts(snapshot: FrozenSelectionSnapshot): FrozenCoverDraft[] {
-  return snapshot.videos.map((_, index) => createCoverDraft(snapshot, index + 1));
+  return Array.from(
+    { length: Math.min(DEFAULT_INITIAL_COVER_DRAFT_LIMIT, snapshot.videos.length) },
+    (_, index) => createCoverDraft(snapshot, index + 1)
+  );
 }
 
 export function mergeFrozenSelectionDraft(
