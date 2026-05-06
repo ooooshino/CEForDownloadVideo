@@ -1,6 +1,7 @@
-import type { ExportResultItem, TabVideoState, VideoCandidate } from "./types";
+import type { ExportResultItem, FrozenSelectionSnapshot, TabVideoState, VideoCandidate } from "./types";
 import { resolveRefreshState } from "./sidepanel-state";
 import {
+  appendFrozenSelectionSnapshot,
   createFrozenSelectionSnapshot,
   FROZEN_SELECTION_DRAFT_STORAGE_KEY,
   FROZEN_SELECTION_STORAGE_KEY
@@ -475,26 +476,24 @@ async function handleFreezeSelection(): Promise<void> {
   }
 
   const stored = await chrome.storage.local.get(FROZEN_SELECTION_STORAGE_KEY);
-  const previousSnapshot = (stored[FROZEN_SELECTION_STORAGE_KEY] as {
-    pageUrl?: string;
-    videos?: Array<{ id?: string }>;
-  } | undefined) ?? null;
-  const shouldResetDraft =
-    !previousSnapshot ||
-    previousSnapshot.pageUrl !== snapshot.pageUrl ||
-    JSON.stringify((previousSnapshot.videos ?? []).map((item) => item.id)) !==
-      JSON.stringify(snapshot.videos.map((item) => item.id));
+  const previousSnapshot =
+    (stored[FROZEN_SELECTION_STORAGE_KEY] as FrozenSelectionSnapshot | undefined) ?? null;
+  const appendResult = appendFrozenSelectionSnapshot(previousSnapshot, snapshot);
 
   await chrome.storage.local.set({
-    [FROZEN_SELECTION_STORAGE_KEY]: snapshot
+    [FROZEN_SELECTION_STORAGE_KEY]: appendResult.snapshot
   });
-  if (shouldResetDraft) {
+  if (appendResult.changed) {
     await chrome.storage.local.remove(FROZEN_SELECTION_DRAFT_STORAGE_KEY);
   }
   await chrome.tabs.create({
     url: chrome.runtime.getURL("selection.html")
   });
-  setStatus(`已锁定 ${snapshot.videos.length} 个视频，可在新页面继续导出。`);
+  setStatus(
+    appendResult.addedCount > 0
+      ? `已追加 ${appendResult.addedCount} 个新视频，当前锁定 ${appendResult.snapshot.videos.length} 个。`
+      : "所选视频已全部锁定，没有新增。"
+  );
 }
 
 async function getCurrentTabId(): Promise<number | null> {
