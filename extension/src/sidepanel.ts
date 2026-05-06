@@ -27,7 +27,6 @@ const coverFileName = must<HTMLSpanElement>("#cover-file-name");
 let currentTabId: number | null = null;
 let currentState: TabVideoState | null = null;
 let selectedIds = new Set<string>();
-let refreshTimer: number | null = null;
 let isRefreshing = false;
 let isExporting = false;
 let activeVideoId: string | null = null;
@@ -39,7 +38,7 @@ void bootstrap();
 
 async function bootstrap(): Promise<void> {
   exportButton.addEventListener("click", () => void handleExport());
-  refreshButton.addEventListener("click", () => void refreshVideos());
+  refreshButton.addEventListener("click", () => void handleManualRefresh());
   selectAllButton.addEventListener("click", handleSelectAll);
   invertButton.addEventListener("click", handleInvertSelection);
   freezeButton.addEventListener("click", () => void handleFreezeSelection());
@@ -48,7 +47,6 @@ async function bootstrap(): Promise<void> {
   currentTabId = await getCurrentTabId();
   await Promise.all([loadHealth(), loadVideos()]);
   syncCoverFileName();
-  startAutoRefresh();
 }
 
 async function loadVideos(): Promise<void> {
@@ -74,8 +72,12 @@ async function loadVideos(): Promise<void> {
   renderVideoList(currentState.videos);
 }
 
-async function refreshVideos(options: { silent?: boolean } = {}): Promise<void> {
+async function refreshVideos(options: { silent?: boolean; protectPreview?: boolean } = {}): Promise<void> {
   if (currentTabId === null || isRefreshing) {
+    return;
+  }
+  if (options.protectPreview && isPreviewActive()) {
+    setStatus("正在预览视频，暂停预览后再刷新检测。");
     return;
   }
   if (options.silent && isPreviewActive()) {
@@ -121,6 +123,11 @@ async function refreshVideos(options: { silent?: boolean } = {}): Promise<void> 
     isRefreshing = false;
     refreshButton.disabled = false;
   }
+}
+
+async function handleManualRefresh(): Promise<void> {
+  await loadHealth();
+  await refreshVideos({ protectPreview: true });
 }
 
 async function loadHealth(): Promise<void> {
@@ -401,19 +408,6 @@ function findActivePlayer(): HTMLVideoElement | null {
   return videoList.querySelector(`video[data-video-id="${CSS.escape(activeVideoId)}"]`) as HTMLVideoElement | null;
 }
 
-function startAutoRefresh(): void {
-  if (refreshTimer !== null) {
-    window.clearInterval(refreshTimer);
-  }
-
-  refreshTimer = window.setInterval(() => {
-    void loadHealth();
-    if (!isPreviewActive()) {
-      void refreshVideos({ silent: true });
-    }
-  }, 5000);
-}
-
 function isPreviewActive(): boolean {
   if (!activeVideoId) {
     return false;
@@ -573,9 +567,6 @@ function escapeHtml(value: string): string {
 }
 
 window.addEventListener("beforeunload", () => {
-  if (refreshTimer !== null) {
-    window.clearInterval(refreshTimer);
-  }
   for (const element of videoList.querySelectorAll("video")) {
     releaseVideoElement(element as HTMLVideoElement);
   }

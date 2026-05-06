@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "test": "mkdir -p ../.tmp-extension-tests && npx esbuild src/sidepanel-state.test.ts src/selection-storage.test.ts src/service-worker-refresh.test.ts src/selection-cover-plan.test.ts --bundle --platform=node --format=esm --outdir=../.tmp-extension-tests && node ../.tmp-extension-tests/sidepanel-state.test.js && node ../.tmp-extension-tests/selection-storage.test.js && node ../.tmp-extension-tests/service-worker-refresh.test.js && node ../.tmp-extension-tests/selection-cover-plan.test.js"
+    "test": "mkdir -p ../.tmp-extension-tests && npx esbuild src/sidepanel-state.test.ts src/sidepanel-auto-refresh.test.ts src/selection-storage.test.ts src/service-worker-refresh.test.ts src/selection-cover-plan.test.ts --bundle --platform=node --format=esm --outdir=../.tmp-extension-tests && node ../.tmp-extension-tests/sidepanel-state.test.js && node ../.tmp-extension-tests/sidepanel-auto-refresh.test.js && node ../.tmp-extension-tests/selection-storage.test.js && node ../.tmp-extension-tests/service-worker-refresh.test.js && node ../.tmp-extension-tests/selection-cover-plan.test.js"
   },
   "devDependencies": {
     "esbuild": "^0.25.2",
