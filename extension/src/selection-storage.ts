@@ -10,7 +10,7 @@ export interface AppendFrozenSelectionResult {
 }
 
 export interface RemoveFrozenSelectionResult {
-  snapshot: FrozenSelectionSnapshot | null;
+  snapshot: FrozenSelectionSnapshot;
   removedCount: number;
 }
 
