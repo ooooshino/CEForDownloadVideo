@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { TabVideoState } from "./types";
 import {
+  appendFrozenSelectionSnapshot,
   createFrozenSelectionSnapshot,
   createInitialCoverDrafts,
-  mergeFrozenSelectionDraft
+  mergeFrozenSelectionDraft,
+  removeFrozenSelectionVideos
 } from "./selection-storage";
 
 function makeState(): TabVideoState {
@@ -84,6 +86,50 @@ test("returns null when nothing exportable is selected", () => {
   assert.equal(snapshot, null);
 });
 
+test("appends new videos to an existing frozen snapshot without replacing old videos", () => {
+  const existing = createFrozenSelectionSnapshot(makeState(), ["a", "c"]);
+  const incoming = createFrozenSelectionSnapshot(makeState(), ["c", "d"]);
+
+  assert.ok(existing);
+  assert.ok(incoming);
+
+  const result = appendFrozenSelectionSnapshot(existing, incoming);
+
+  assert.deepEqual(result.snapshot.videos.map((video) => video.id), ["a", "c", "d"]);
+  assert.equal(result.addedCount, 1);
+  assert.equal(result.changed, true);
+  assert.equal(result.snapshot.pageUrl, incoming.pageUrl);
+  assert.equal(result.snapshot.pageTitle, incoming.pageTitle);
+  assert.equal(result.snapshot.createdAt, incoming.createdAt);
+});
+
+test("keeps existing frozen snapshot when selected videos are already locked", () => {
+  const existing = createFrozenSelectionSnapshot(makeState(), ["a", "c"]);
+  const incoming = createFrozenSelectionSnapshot(makeState(), ["c", "a"]);
+
+  assert.ok(existing);
+  assert.ok(incoming);
+
+  const result = appendFrozenSelectionSnapshot(existing, incoming);
+
+  assert.deepEqual(result.snapshot.videos.map((video) => video.id), ["a", "c"]);
+  assert.equal(result.addedCount, 0);
+  assert.equal(result.changed, false);
+  assert.equal(result.snapshot, existing);
+});
+
+test("uses the incoming snapshot when there is no existing frozen queue", () => {
+  const incoming = createFrozenSelectionSnapshot(makeState(), ["a", "d"]);
+
+  assert.ok(incoming);
+
+  const result = appendFrozenSelectionSnapshot(null, incoming);
+
+  assert.deepEqual(result.snapshot.videos.map((video) => video.id), ["a", "d"]);
+  assert.equal(result.addedCount, 2);
+  assert.equal(result.changed, true);
+});
+
 test("keeps the frozen snapshot order stable after the source state mutates", () => {
   const state = makeState();
   const snapshot = createFrozenSelectionSnapshot(state, ["a", "c", "d"]);
@@ -137,6 +183,39 @@ test("freezes the snapshot wrapper and nested video items against direct mutatio
   assert.equal(snapshot.pageTitle, "Demo page");
   assert.equal(snapshot.videos[0]?.title, "A");
   assert.equal(snapshot.videos.length, 2);
+});
+
+test("removes frozen videos by id and keeps remaining order", () => {
+  const snapshot = createFrozenSelectionSnapshot(makeState(), ["a", "c", "d"]);
+
+  assert.ok(snapshot);
+
+  const result = removeFrozenSelectionVideos(snapshot, ["c"]);
+
+  assert.deepEqual(result.snapshot?.videos.map((video) => video.id), ["a", "d"]);
+  assert.equal(result.removedCount, 1);
+});
+
+test("returns original snapshot when removing ids that are not locked", () => {
+  const snapshot = createFrozenSelectionSnapshot(makeState(), ["a", "c"]);
+
+  assert.ok(snapshot);
+
+  const result = removeFrozenSelectionVideos(snapshot, ["x"]);
+
+  assert.equal(result.snapshot, snapshot);
+  assert.equal(result.removedCount, 0);
+});
+
+test("removing every frozen video returns an empty snapshot", () => {
+  const snapshot = createFrozenSelectionSnapshot(makeState(), ["a", "c"]);
+
+  assert.ok(snapshot);
+
+  const result = removeFrozenSelectionVideos(snapshot, ["a", "c"]);
+
+  assert.deepEqual(result.snapshot?.videos, []);
+  assert.equal(result.removedCount, 2);
 });
 
 test("creates initial cover drafts in frozen snapshot order", () => {
