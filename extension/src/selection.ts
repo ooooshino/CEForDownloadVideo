@@ -115,6 +115,13 @@ function renderSnapshotSection(): void {
   selectionCount.className = "badge ok";
   selectionList.innerHTML = "";
 
+  if (snapshot.videos.length === 0) {
+    selectionCount.className = "badge pending";
+    selectionList.innerHTML = `<div class="empty-block">已锁定视频已全部移除。</div>`;
+    syncLockedManagementControls();
+    return;
+  }
+
   snapshot.videos.forEach((item, index) => {
     const card = document.createElement("div");
     card.className = "locked-item";
@@ -355,32 +362,43 @@ async function removeLockedVideos(videoIds: Iterable<string>): Promise<void> {
     return;
   }
 
-  snapshot = result.snapshot;
+  const nextSnapshot = result.snapshot;
+  const nextCovers = redistributeCoversAfterVideoChange(nextSnapshot, covers);
+
+  try {
+    await chrome.storage.local.set({
+      [FROZEN_SELECTION_STORAGE_KEY]: nextSnapshot,
+      [FROZEN_SELECTION_DRAFT_STORAGE_KEY]: nextCovers.map((item) => item.draft)
+    });
+  } catch (error) {
+    setStatus(`移除失败：${toErrorMessage(error)}`);
+    renderSnapshotSection();
+    return;
+  }
+
+  snapshot = nextSnapshot;
+  covers = nextCovers;
   managedVideoIds = new Set();
-  redistributeCoversAfterVideoChange();
-
-  await chrome.storage.local.set({
-    [FROZEN_SELECTION_STORAGE_KEY]: snapshot
-  });
-  await persistDrafts();
-
   setStatus(`已移除 ${result.removedCount} 个视频，并重新分配封面范围。`);
   renderAll();
 }
 
-function redistributeCoversAfterVideoChange(): void {
-  if (!snapshot || snapshot.videos.length === 0 || covers.length === 0) {
-    return;
+function redistributeCoversAfterVideoChange(
+  nextSnapshot: FrozenSelectionSnapshot,
+  currentCovers: CoverUiState[]
+): CoverUiState[] {
+  if (nextSnapshot.videos.length === 0 || currentCovers.length === 0) {
+    return currentCovers;
   }
 
   const ranges = buildAutomaticRanges({
-    videoCount: snapshot.videos.length,
-    coverCount: covers.length
+    videoCount: nextSnapshot.videos.length,
+    coverCount: currentCovers.length
   });
   const activeCoverCount = ranges.length;
-  covers = covers.map((cover, index) => {
+  return currentCovers.map((cover, index) => {
     if (index >= activeCoverCount) {
-      const fallback = Math.max(1, snapshot?.videos.length ?? 1);
+      const fallback = Math.max(1, nextSnapshot.videos.length);
       return {
         ...cover,
         draft: {
