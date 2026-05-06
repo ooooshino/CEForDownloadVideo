@@ -97,17 +97,18 @@ export function createCandidateId(src: string): string {
 }
 
 export function mergeCandidates(existing: VideoCandidate[], incoming: VideoCandidate[]): VideoCandidate[] {
-  const map = new Map<string, VideoCandidate>();
+  const existingByKey = new Map(existing.map((item) => [createMergeKey(item), item]));
+  const incomingByKey = new Map<string, VideoCandidate>();
 
-  for (const item of [...existing, ...incoming]) {
+  for (const item of incoming) {
     const key = createMergeKey(item);
-    const previous = map.get(key);
+    const previous = incomingByKey.get(key) ?? existingByKey.get(key);
     if (!previous) {
-      map.set(key, item);
+      incomingByKey.set(key, item);
       continue;
     }
 
-    map.set(key, {
+    incomingByKey.set(key, {
       ...previous,
       ...item,
       title: item.title || previous.title,
@@ -122,7 +123,15 @@ export function mergeCandidates(existing: VideoCandidate[], incoming: VideoCandi
     });
   }
 
-  return [...map.values()].sort(sortCandidates);
+  const newItems = [...incomingByKey.entries()]
+    .filter(([key]) => !existingByKey.has(key))
+    .map(([, item]) => item);
+  const existingItems = existing.map((item) => {
+    const key = createMergeKey(item);
+    return incomingByKey.get(key) ?? item;
+  });
+
+  return [...newItems, ...existingItems];
 }
 
 export function makeCandidate(input: {
@@ -151,20 +160,6 @@ export function makeCandidate(input: {
     exportable: support.exportable,
     unsupportedReason: support.unsupportedReason
   };
-}
-
-function sortCandidates(a: VideoCandidate, b: VideoCandidate): number {
-  const score = (candidate: VideoCandidate) => {
-    if (candidate.exportable) {
-      return 2;
-    }
-    if (candidate.src.startsWith("blob:")) {
-      return 1;
-    }
-    return 0;
-  };
-
-  return score(b) - score(a) || a.src.localeCompare(b.src);
 }
 
 function simpleHash(input: string): string {
