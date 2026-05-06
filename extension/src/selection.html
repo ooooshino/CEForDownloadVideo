@@ -33,7 +33,12 @@
             <strong class="section-title">已锁定视频队列</strong>
             <p id="selection-hint" class="muted">这里的数据只会在你手动清空或重新锁定时变化。</p>
           </div>
-          <span id="selection-count" class="badge pending">0 ITEMS</span>
+          <div class="locked-actions">
+            <button id="select-locked-all-btn" class="button secondary small" type="button">全选</button>
+            <button id="invert-locked-selection-btn" class="button secondary small" type="button">反选</button>
+            <button id="remove-locked-selected-btn" class="button danger small" type="button">移除已选</button>
+            <span id="selection-count" class="badge pending">0 ITEMS</span>
+          </div>
         </div>
         <div id="selection-list" class="video-list"></div>
       </section>

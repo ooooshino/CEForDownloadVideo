@@ -2,7 +2,8 @@ import type { FrozenBatchResult, FrozenCoverDraft, FrozenExportTask, FrozenSelec
 import {
   FROZEN_SELECTION_DRAFT_STORAGE_KEY,
   FROZEN_SELECTION_STORAGE_KEY,
-  mergeFrozenSelectionDraft
+  mergeFrozenSelectionDraft,
+  removeFrozenSelectionVideos
 } from "./selection-storage";
 import { buildAutomaticRanges, expandFrozenTasks, validateCoverRanges } from "./selection-cover-plan";
 import { LOCAL_SERVER_BASE_URL } from "./utils";
@@ -11,6 +12,9 @@ const snapshotMeta = must<HTMLParagraphElement>("#snapshot-meta");
 const selectionHint = must<HTMLParagraphElement>("#selection-hint");
 const selectionCount = must<HTMLSpanElement>("#selection-count");
 const selectionList = must<HTMLDivElement>("#selection-list");
+const selectLockedAllButton = must<HTMLButtonElement>("#select-locked-all-btn");
+const invertLockedSelectionButton = must<HTMLButtonElement>("#invert-locked-selection-btn");
+const removeLockedSelectedButton = must<HTMLButtonElement>("#remove-locked-selected-btn");
 const autoDistributeButton = must<HTMLButtonElement>("#auto-distribute-btn");
 const addCoverButton = must<HTMLButtonElement>("#add-cover-btn");
 const coverList = must<HTMLDivElement>("#cover-list");
@@ -43,6 +47,7 @@ interface BatchSubmitInput {
 
 let snapshot: FrozenSelectionSnapshot | null = null;
 let covers: CoverUiState[] = [];
+let managedVideoIds = new Set<string>();
 let isExporting = false;
 
 const SERVER_BATCH_CONCURRENCY = 5;
@@ -61,6 +66,9 @@ async function bootstrap(): Promise<void> {
   exportButton.addEventListener("click", () => void handleExport());
   clearButton.addEventListener("click", () => void handleClear());
   backButton.addEventListener("click", () => void closeCurrentTab());
+  selectLockedAllButton.addEventListener("click", handleSelectAllLockedVideos);
+  invertLockedSelectionButton.addEventListener("click", handleInvertLockedVideoSelection);
+  removeLockedSelectedButton.addEventListener("click", () => void handleRemoveSelectedLockedVideos());
 
   await loadState();
   renderAll();
@@ -97,6 +105,7 @@ function renderSnapshotSection(): void {
     selectionCount.textContent = "0 ITEMS";
     selectionCount.className = "badge pending";
     selectionList.innerHTML = `<div class="empty-block">还没有锁定视频。</div>`;
+    syncLockedManagementControls();
     return;
   }
 
@@ -110,7 +119,16 @@ function renderSnapshotSection(): void {
     const card = document.createElement("div");
     card.className = "locked-item";
     const durationText = typeof item.duration === "number" && item.duration > 0 ? `${item.duration.toFixed(1)}s` : "--";
+    const checked = managedVideoIds.has(item.id) ? "checked" : "";
+    const disabled = isExporting ? "disabled" : "";
     card.innerHTML = `
+      <div class="locked-card-actions">
+        <label class="locked-check">
+          <input type="checkbox" data-locked-check-id="${escapeHtml(item.id)}" ${checked} ${disabled} />
+          <span>选择</span>
+        </label>
+        <button class="button danger small" type="button" data-remove-video-id="${escapeHtml(item.id)}" ${disabled}>移除</button>
+      </div>
       <div class="preview-shell">
         <div class="ordinal-chip">#${index + 1}</div>
         <div class="duration-chip">${durationText}</div>
@@ -121,8 +139,26 @@ function renderSnapshotSection(): void {
         <div class="locked-url">${escapeHtml(item.src)}</div>
       </div>
     `;
+
+    const checkbox = card.querySelector(`[data-locked-check-id="${CSS.escape(item.id)}"]`) as HTMLInputElement;
+    checkbox.addEventListener("change", () => {
+      if (checkbox.checked) {
+        managedVideoIds.add(item.id);
+      } else {
+        managedVideoIds.delete(item.id);
+      }
+      syncLockedManagementControls();
+    });
+
+    const removeButton = card.querySelector(`[data-remove-video-id="${CSS.escape(item.id)}"]`) as HTMLButtonElement;
+    removeButton.addEventListener("click", () => {
+      void removeLockedVideos([item.id]);
+    });
+
     selectionList.appendChild(card);
   });
+
+  syncLockedManagementControls();
 }
 
 function renderCoverEditor(): void {
@@ -276,6 +312,107 @@ function renderTaskSection(): void {
     `;
     taskPreviewList.appendChild(row);
   }
+}
+
+function handleSelectAllLockedVideos(): void {
+  if (!snapshot || isExporting) {
+    return;
+  }
+  managedVideoIds = new Set(snapshot.videos.map((item) => item.id));
+  renderSnapshotSection();
+}
+
+function handleInvertLockedVideoSelection(): void {
+  if (!snapshot || isExporting) {
+    return;
+  }
+  const next = new Set<string>();
+  for (const item of snapshot.videos) {
+    if (!managedVideoIds.has(item.id)) {
+      next.add(item.id);
+    }
+  }
+  managedVideoIds = next;
+  renderSnapshotSection();
+}
+
+async function handleRemoveSelectedLockedVideos(): Promise<void> {
+  if (managedVideoIds.size === 0) {
+    setStatus("请先勾选要移除的视频。");
+    return;
+  }
+  await removeLockedVideos(managedVideoIds);
+}
+
+async function removeLockedVideos(videoIds: Iterable<string>): Promise<void> {
+  if (!snapshot || isExporting) {
+    return;
+  }
+
+  const result = removeFrozenSelectionVideos(snapshot, videoIds);
+  if (result.removedCount === 0) {
+    setStatus("请先勾选要移除的视频。");
+    return;
+  }
+
+  snapshot = result.snapshot;
+  managedVideoIds = new Set();
+  redistributeCoversAfterVideoChange();
+
+  await chrome.storage.local.set({
+    [FROZEN_SELECTION_STORAGE_KEY]: snapshot
+  });
+  await persistDrafts();
+
+  setStatus(`已移除 ${result.removedCount} 个视频，并重新分配封面范围。`);
+  renderAll();
+}
+
+function redistributeCoversAfterVideoChange(): void {
+  if (!snapshot || snapshot.videos.length === 0 || covers.length === 0) {
+    return;
+  }
+
+  const ranges = buildAutomaticRanges({
+    videoCount: snapshot.videos.length,
+    coverCount: covers.length
+  });
+  const activeCoverCount = ranges.length;
+  covers = covers.map((cover, index) => {
+    if (index >= activeCoverCount) {
+      const fallback = Math.max(1, snapshot?.videos.length ?? 1);
+      return {
+        ...cover,
+        draft: {
+          ...cover.draft,
+          index: index + 1,
+          name: `Cover ${index + 1}`,
+          from: fallback,
+          to: fallback
+        }
+      };
+    }
+
+    return {
+      ...cover,
+      draft: {
+        ...cover.draft,
+        index: index + 1,
+        name: `Cover ${index + 1}`,
+        from: ranges[index]!.from,
+        to: ranges[index]!.to
+      }
+    };
+  });
+}
+
+function syncLockedManagementControls(): void {
+  const hasSnapshot = Boolean(snapshot);
+  const hasVideos = (snapshot?.videos.length ?? 0) > 0;
+  const disabled = isExporting || !hasSnapshot || !hasVideos;
+  selectLockedAllButton.disabled = disabled;
+  invertLockedSelectionButton.disabled = disabled;
+  removeLockedSelectedButton.disabled = disabled || managedVideoIds.size === 0;
 }
 
 async function handleAddCover(): Promise<void> {
@@ -478,6 +615,7 @@ async function handleExport(): Promise<void> {
 
   isExporting = true;
   renderTaskSection();
+  renderSnapshotSection();
   resultList.className = "result-list empty";
   resultList.textContent = "批量导出进行中…";
   setStatus(
@@ -503,6 +641,7 @@ async function handleExport(): Promise<void> {
   } finally {
     isExporting = false;
     renderTaskSection();
+    renderSnapshotSection();
   }
 }
 
@@ -710,6 +849,7 @@ async function handleClear(): Promise<void> {
   }
   covers = [];
   snapshot = null;
+  managedVideoIds = new Set();
   await chrome.storage.local.remove([
     FROZEN_SELECTION_STORAGE_KEY,
     FROZEN_SELECTION_DRAFT_STORAGE_KEY
